@@ -1,0 +1,82 @@
+id: research.paper_claim_method_finding
+name: Paper Claim-Method-Finding Workflow
+version: 0.1.0
+
+status: active
+skill_type: workflow
+
+category:
+  primary: research
+  secondary:
+    - academic_paper_processing
+    - analysis
+
+description:
+  short: Extract a paper's central claim, method, findings, evidence, and limits.
+  long: >
+    Guides structured analysis of academic papers by separating the author's
+    contribution claim from methods, empirical findings, evidence quality, and
+    stated or implied limitations.
+
+capabilities:
+  - id: extract_claim
+    description: Identify the main research claim or contribution.
+  - id: extract_method
+    description: Identify the method, dataset, experiment, or theoretical approach.
+  - id: extract_findings
+    description: Identify key results and the evidence supporting them.
+
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+  default_read_level: overview
+
+content:
+  format: markdown
+  path: skill.md
+  sections:
+    - overview
+    - procedure
+    - output_format
+    - examples
+    - failure_modes
+
+when_to_use:
+  - The user asks for a structured research paper summary.
+  - The task requires claim, method, finding, evidence, or limitation extraction.
+  - The input is academic text, an abstract, or paper body text.
+
+when_not_to_use:
+  - The user only wants translation.
+  - The input is not research or scholarly writing.
+  - The user asks for citation formatting only.
+
+input_types:
+  - paper_text
+  - academic_text
+
+output_types:
+  - markdown
+  - structured_text
+
+examples:
+  positive:
+    - user_query: "Read this paper and summarize its claim, method, and findings."
+      reason: "The requested structure matches the workflow."
+    - user_query: "What is the main contribution and evidence in this paper?"
+      reason: "Contribution and evidence extraction are core capabilities."
+  negative:
+    - user_query: "Convert these references to APA."
+      reason: "Reference formatting is outside this workflow."
+
+execution:
+  mode: none
+
+tags:
+  - research
+  - academic
+  - paper
+  - claims
+  - methods
+  - findings

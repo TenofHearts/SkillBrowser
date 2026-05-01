@@ -1,0 +1,37 @@
+id: research.paper_claim_method_finding
+name: Paper Claim Method Finding Workflow
+version: 0.1.0
+status: active
+skill_type: workflow
+category:
+  primary: research
+  secondary: [academic_paper_processing, analysis]
+description:
+  short: Extract claims, methods, findings, evidence, and limitations from academic papers.
+capabilities:
+  - id: extract_claim
+    description: Identify the central claim of an academic paper.
+  - id: extract_method
+    description: Identify the method used by a paper.
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+  default_read_level: overview
+content:
+  format: markdown
+  path: skill.md
+  sections: [overview, procedure, output_format]
+when_to_use:
+  - The user asks to analyze an academic paper structurally.
+when_not_to_use:
+  - The user only needs translation.
+input_types: [paper_text]
+output_types: [markdown, structured_text]
+examples:
+  positive:
+    - user_query: What is the main contribution of this paper?
+      reason: Contribution maps to claim and findings.
+execution:
+  mode: none
+tags: [research, academic, paper]

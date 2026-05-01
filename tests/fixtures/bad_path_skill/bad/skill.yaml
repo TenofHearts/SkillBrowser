@@ -1,0 +1,16 @@
+id: bad.path
+name: Bad Path
+skill_type: workflow
+category:
+  primary: test
+description:
+  short: Bad path test skill.
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+content:
+  format: markdown
+  path: ../secret.md
+execution:
+  mode: none

@@ -1,0 +1,81 @@
+id: writing.academic_abstract
+name: Academic Abstract Writer
+version: 0.1.0
+
+status: active
+skill_type: prompt_pattern
+
+category:
+  primary: writing
+  secondary:
+    - academic_writing
+    - summarization
+
+description:
+  short: Draft or revise concise academic abstracts from structured research notes.
+  long: >
+    Provides a repeatable pattern for writing abstracts that include context,
+    gap, method, result, and implication without promotional language.
+
+capabilities:
+  - id: abstract_structure
+    description: Organize abstracts around context, gap, method, result, and implication.
+  - id: academic_tone
+    description: Improve clarity while preserving scholarly tone.
+  - id: word_budgeting
+    description: Compress research summaries into a target word count.
+
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+  default_read_level: overview
+
+content:
+  format: markdown
+  path: skill.md
+  sections:
+    - overview
+    - procedure
+    - output_format
+    - examples
+    - failure_modes
+
+when_to_use:
+  - The user asks to write, revise, shorten, or polish an academic abstract.
+  - The input includes research notes, findings, methods, or a draft abstract.
+  - The task has a target venue, discipline, or word limit.
+
+when_not_to_use:
+  - The user asks for a popular science summary.
+  - The user needs a full introduction or related work section.
+  - The source material lacks any research result or method.
+
+input_types:
+  - research_notes
+  - draft_text
+  - paper_summary
+
+output_types:
+  - abstract_text
+  - markdown
+
+examples:
+  positive:
+    - user_query: "Turn these notes into a 180-word conference abstract."
+      reason: "The task requires abstract structure and word budgeting."
+    - user_query: "Make this abstract clearer and less verbose."
+      reason: "The skill covers abstract revision."
+  negative:
+    - user_query: "Write a full literature review."
+      reason: "The requested output is not an abstract."
+
+execution:
+  mode: none
+
+tags:
+  - writing
+  - academic
+  - abstract
+  - revision
+  - concise

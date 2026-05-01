@@ -1,0 +1,16 @@
+id: duplicate.skill
+name: Duplicate One
+skill_type: workflow
+category:
+  primary: test
+description:
+  short: Duplicate test skill.
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+content:
+  format: markdown
+  path: skill.md
+execution:
+  mode: none

@@ -1,0 +1,16 @@
+[project]
+name = "skill-search-agent"
+version = "0.1.0"
+description = "Local skill search and reading MVP"
+requires-python = ">=3.9"
+dependencies = [
+    "pydantic>=1.10,<2",
+    "PyYAML>=6.0",
+]
+
+[project.scripts]
+skill-agent = "skill_search_agent.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

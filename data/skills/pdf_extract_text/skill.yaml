@@ -1,0 +1,136 @@
+id: pdf.extract_text
+name: PDF Text Extractor
+version: 0.1.0
+
+status: active
+skill_type: tool_wrapper
+
+category:
+  primary: document_processing
+  secondary:
+    - pdf
+    - text_extraction
+    - academic_paper_processing
+
+description:
+  short: Extract page-level text from local PDF files.
+  long: >
+    Declares an executable interface for reading local PDF text while preserving
+    page order. Use before summarizing, quoting, searching, or structurally
+    analyzing PDF content.
+
+capabilities:
+  - id: read_pdf
+    description: Read a local PDF file path.
+  - id: extract_page_text
+    description: Extract text by page.
+  - id: preserve_page_order
+    description: Preserve source page sequence for citation and review.
+
+interaction:
+  mode: execute_directly
+  readable: true
+  executable: true
+  default_read_level: overview
+
+content:
+  format: markdown
+  path: skill.md
+  sections:
+    - overview
+    - schema
+    - examples
+    - failure_modes
+
+when_to_use:
+  - The user provides a local PDF path.
+  - The task requires reading, summarizing, quoting, or searching inside a PDF.
+  - Page-level ordering matters.
+
+when_not_to_use:
+  - The PDF is scanned image-only and OCR is required.
+  - The input is already plain text.
+  - The user only asks a conceptual question about PDFs.
+
+input_types:
+  - pdf
+  - file_path
+
+output_types:
+  - json
+  - text
+
+input_schema:
+  type: object
+  required:
+    - file_path
+  properties:
+    file_path:
+      type: string
+      description: Local path to the PDF file.
+    pages:
+      type: array
+      items:
+        type: integer
+      description: Optional one-based page numbers to extract.
+
+output_schema:
+  type: object
+  required:
+    - pages
+  properties:
+    pages:
+      type: array
+      items:
+        type: object
+        required:
+          - page_number
+          - text
+        properties:
+          page_number:
+            type: integer
+          text:
+            type: string
+
+examples:
+  positive:
+    - user_query: "Summarize this PDF paper."
+      reason: "The document must be read before summarization."
+    - user_query: "Extract pages 2 and 3 from report.pdf."
+      reason: "The task requests page-level PDF text."
+  negative:
+    - user_query: "Read text from this screenshot."
+      reason: "The skill does not perform OCR."
+
+dependencies:
+  python:
+    - pymupdf
+  system: []
+
+permissions:
+  filesystem:
+    read: true
+    write: false
+  network: false
+  shell: false
+
+risk:
+  level: low
+  notes: "Reads local files only."
+
+execution:
+  mode: python_function
+  module: skills.pdf_extract.main
+  function: extract_text
+
+cost:
+  expected_latency_ms: 500
+  expected_token_cost: low
+  expected_compute: cpu
+
+tags:
+  - pdf
+  - document
+  - extraction
+  - text
+  - pages

@@ -1,0 +1,48 @@
+id: pdf.extract_text
+name: PDF Text Extractor
+version: 0.1.0
+status: active
+skill_type: tool_wrapper
+category:
+  primary: document_processing
+  secondary: [pdf, text_extraction]
+description:
+  short: Extract text from PDF files while preserving page order.
+capabilities:
+  - id: read_pdf
+    description: Read a local PDF file.
+  - id: extract_page_text
+    description: Extract text page by page from a PDF.
+interaction:
+  mode: execute_directly
+  readable: true
+  executable: true
+  default_read_level: overview
+content:
+  format: markdown
+  path: skill.md
+  sections: [overview, schema, examples]
+when_to_use:
+  - The input file is a PDF and the task requires text extraction.
+when_not_to_use:
+  - The input is an image or screenshot requiring OCR.
+input_types: [pdf, file_path]
+output_types: [json, text]
+input_schema:
+  type: object
+  required: [file_path]
+  properties:
+    file_path:
+      type: string
+output_schema:
+  type: object
+  required: [pages]
+examples:
+  positive:
+    - user_query: Extract text from this PDF paper.
+      reason: The task requires PDF text extraction.
+execution:
+  mode: python_function
+  module: skills.pdf_extract.main
+  function: extract_text
+tags: [pdf, document, text]

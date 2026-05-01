@@ -1,0 +1,141 @@
+id: csv.read
+name: CSV Reader
+version: 0.1.0
+
+status: active
+skill_type: tool_wrapper
+
+category:
+  primary: data_processing
+  secondary:
+    - csv
+    - tabular_data
+    - file_io
+
+description:
+  short: Load a local CSV file into a table-like data structure.
+  long: >
+    Declares an executable interface for reading local CSV files with delimiter,
+    encoding, header, and row-limit options. Use before exploratory analysis,
+    validation, or chart generation.
+
+capabilities:
+  - id: read_csv_file
+    description: Read tabular records from a local CSV path.
+  - id: infer_columns
+    description: Return column names and basic shape metadata.
+  - id: limit_rows
+    description: Optionally sample or limit loaded rows for inspection.
+
+interaction:
+  mode: execute_directly
+  readable: true
+  executable: true
+  default_read_level: overview
+
+content:
+  format: markdown
+  path: skill.md
+  sections:
+    - overview
+    - schema
+    - examples
+    - failure_modes
+
+when_to_use:
+  - The user provides a CSV file path.
+  - A downstream skill needs tabular records or column metadata.
+  - The task requires inspecting rows, columns, or data quality.
+
+when_not_to_use:
+  - The file is Excel, JSON, Parquet, or free-form text.
+  - The user asks only for conceptual CSV advice.
+  - The dataset is too large for local memory without chunked loading.
+
+input_types:
+  - csv
+  - file_path
+
+output_types:
+  - dataframe
+  - json
+
+input_schema:
+  type: object
+  required:
+    - file_path
+  properties:
+    file_path:
+      type: string
+      description: Local path to the CSV file.
+    delimiter:
+      type: string
+      default: ","
+      description: Field delimiter.
+    encoding:
+      type: string
+      default: utf-8
+      description: File encoding.
+    max_rows:
+      type: integer
+      description: Optional maximum number of rows to load.
+
+output_schema:
+  type: object
+  required:
+    - columns
+    - row_count
+  properties:
+    columns:
+      type: array
+      items:
+        type: string
+    row_count:
+      type: integer
+    sample:
+      type: array
+      items:
+        type: object
+
+examples:
+  positive:
+    - user_query: "Load sales.csv and show the columns."
+      reason: "The skill reads CSV data and reports metadata."
+    - user_query: "Explore this CSV dataset."
+      reason: "CSV reading is needed before analysis."
+  negative:
+    - user_query: "Open this workbook.xlsx."
+      reason: "The file is not CSV."
+
+dependencies:
+  python:
+    - pandas
+  system: []
+
+permissions:
+  filesystem:
+    read: true
+    write: false
+  network: false
+  shell: false
+
+risk:
+  level: low
+  notes: "Reads local tabular files only."
+
+execution:
+  mode: python_function
+  module: skills.csv_read.main
+  function: read_csv
+
+cost:
+  expected_latency_ms: 300
+  expected_token_cost: low
+  expected_compute: cpu
+
+tags:
+  - csv
+  - table
+  - dataframe
+  - data
+  - file

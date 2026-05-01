@@ -1,0 +1,83 @@
+id: analysis.data_exploration_workflow
+name: Data Exploration Workflow
+version: 0.1.0
+
+status: active
+skill_type: workflow
+
+category:
+  primary: data_analysis
+  secondary:
+    - exploratory_analysis
+    - tabular_data
+
+description:
+  short: Plan and report exploratory analysis for tabular datasets.
+  long: >
+    Guides an analyst through inspecting schema, missingness, distributions,
+    relationships, outliers, and caveats before drawing conclusions from a
+    dataset.
+
+capabilities:
+  - id: inspect_schema
+    description: Identify columns, data types, units, and likely keys.
+  - id: assess_quality
+    description: Check missing values, duplicates, outliers, and inconsistent categories.
+  - id: summarize_patterns
+    description: Describe distributions and relationships with appropriate caveats.
+
+interaction:
+  mode: read_then_apply
+  readable: true
+  executable: false
+  default_read_level: overview
+
+content:
+  format: markdown
+  path: skill.md
+  sections:
+    - overview
+    - procedure
+    - output_format
+    - examples
+    - failure_modes
+
+when_to_use:
+  - The user asks what is in a dataset.
+  - The task requires exploratory data analysis or profiling.
+  - The user needs findings and caveats before modeling or visualization.
+
+when_not_to_use:
+  - The user already supplied a final statistical model specification.
+  - The task is only file conversion.
+  - The data is unstructured text with no table-like records.
+
+input_types:
+  - dataframe
+  - csv
+  - tabular_data
+
+output_types:
+  - markdown
+  - analysis_plan
+  - structured_text
+
+examples:
+  positive:
+    - user_query: "Explore this CSV and tell me what stands out."
+      reason: "The workflow covers schema, quality, and pattern discovery."
+    - user_query: "What should I check before modeling this dataset?"
+      reason: "The workflow identifies data quality and modeling caveats."
+  negative:
+    - user_query: "Translate these product reviews."
+      reason: "The input is text translation, not exploratory data analysis."
+
+execution:
+  mode: none
+
+tags:
+  - data
+  - analysis
+  - exploratory
+  - csv
+  - profiling
