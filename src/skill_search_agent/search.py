@@ -7,6 +7,7 @@ from collections import Counter
 from .loader import load_skill_document
 from .schema import ScoreBreakdown, SkillCard, SkillSearchRequest, SkillSearchResponse, SkillSpec
 from .sections import parse_markdown_sections
+from .views import build_skill_search_text
 
 
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
@@ -17,29 +18,7 @@ def tokenize(text: str) -> list[str]:
 
 
 def _skill_search_text(skill: SkillSpec) -> str:
-    parts = [
-        skill.name,
-        skill.description.short,
-        skill.description.long or "",
-        skill.category.primary,
-        " ".join(skill.category.secondary),
-        " ".join(cap.description for cap in skill.capabilities),
-        " ".join(skill.when_to_use),
-        " ".join(skill.input_types),
-        " ".join(skill.output_types),
-        " ".join(skill.tags),
-        " ".join(example.user_query for example in skill.examples.positive),
-    ]
-    try:
-        sections = parse_markdown_sections(load_skill_document(skill))
-        parts.extend(
-            section.content
-            for section in sections
-            if section.key not in {"failure_modes", "when_not_to_use", "contraindications"}
-        )
-    except Exception:
-        pass
-    return "\n".join(parts)
+    return build_skill_search_text(skill)
 
 
 class SkillSearcher:

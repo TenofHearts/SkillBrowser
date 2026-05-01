@@ -8,7 +8,9 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from .loader import SkillLoadError, load_skills
+from .evaluation import evaluate_retrieval, load_retrieval_dataset
 from .reader import SkillReader
+from .registry import default_db_path, dump_json_summary, rebuild_registry
 from .schema import SkillReadRequest, SkillSearchRequest
 from .search import SkillSearcher
 
@@ -24,6 +26,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("validate-skills", help="Validate local skill specs")
 
+    build_index = sub.add_parser("build-index", help="Build the local SQLite skill registry")
+    build_index.add_argument("--index-dir", default="data/indexes")
+    build_index.add_argument("--db-path")
+
     search = sub.add_parser("search", help="Search local skills")
     search.add_argument("query")
     search.add_argument("--top-k", type=int, default=5)
@@ -32,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     read.add_argument("skill_id")
     read.add_argument("--section")
     read.add_argument("--max-tokens", type=int, default=2000)
+
+    eval_retrieval = sub.add_parser("eval-retrieval", help="Evaluate skill retrieval on a JSONL dataset")
+    eval_retrieval.add_argument("--dataset", required=True)
+    eval_retrieval.add_argument("--top-k", type=int, default=5)
 
     return parser
 
@@ -45,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "validate-skills":
             print(json.dumps({"ok": True, "skill_count": len(skills), "skill_ids": [s.id for s in skills]}, indent=2))
             return 0
+        if args.command == "build-index":
+            db_path = Path(args.db_path) if args.db_path else default_db_path(args.index_dir)
+            summary = rebuild_registry(skills, db_path)
+            print(dump_json_summary({"ok": True, "db_path": str(db_path), **summary}))
+            return 0
         if args.command == "search":
             print_json(SkillSearcher(skills).search(SkillSearchRequest(query=args.query, top_k=args.top_k)))
             return 0
@@ -55,7 +70,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
-    except (SkillLoadError, ValidationError) as exc:
+        if args.command == "eval-retrieval":
+            examples = load_retrieval_dataset(args.dataset)
+            print_json(evaluate_retrieval(SkillSearcher(skills), examples, args.top_k))
+            return 0
+    except (SkillLoadError, ValidationError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

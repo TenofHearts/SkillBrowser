@@ -21,7 +21,7 @@ interaction:
 content:
   format: markdown
   path: skill.md
-  sections: [overview, schema, examples]
+  sections: [overview, schema, examples, caveats]
 when_to_use:
   - The input file is a PDF and the task requires text extraction.
 when_not_to_use:

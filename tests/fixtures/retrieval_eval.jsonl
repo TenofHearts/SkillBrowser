@@ -1,0 +1,2 @@
+{"query": "extract text from a PDF", "expected_skill_id": "pdf.extract_text", "expected_section": "overview"}
+{"query": "summarize the claim method and findings of a paper", "expected_skill_id": "research.paper_claim_method_finding", "expected_section": "overview"}

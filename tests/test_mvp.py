@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from skill_search_agent.loader import SkillLoadError, load_skills
+from skill_search_agent.evaluation import evaluate_retrieval, load_retrieval_dataset
 from skill_search_agent.reader import SkillReader
+from skill_search_agent.registry import rebuild_registry, registry_summary
 from skill_search_agent.schema import SkillReadRequest, SkillSearchRequest
 from skill_search_agent.search import SkillSearcher
 
@@ -58,3 +61,35 @@ def test_document_path_must_stay_inside_skill_root() -> None:
     skills = load_skills(Path(__file__).parent / "fixtures" / "bad_path_skill")
     with pytest.raises(SkillLoadError, match="escapes skill directory"):
         SkillReader(skills).read(SkillReadRequest(skill_id="bad.path"))
+
+
+def test_registry_persists_skills_sections_and_views() -> None:
+    pytest.importorskip("_sqlite3")
+    skills = load_skills(SKILL_DIR)
+    db_dir = Path(__file__).parent / ".tmp"
+    db_dir.mkdir(exist_ok=True)
+    db_path = db_dir / f"skills-{uuid4().hex}.db"
+
+    try:
+        result = rebuild_registry(skills, db_path)
+        summary = registry_summary(db_path)
+    finally:
+        db_path.unlink(missing_ok=True)
+
+    assert result["skill_count"] == 2
+    assert summary["skills"] == 2
+    assert summary["skill_documents"] == 2
+    assert summary["skill_sections"] >= 8
+    assert summary["skill_views"] >= 10
+
+
+def test_retrieval_evaluation_reports_metrics() -> None:
+    skills = load_skills(SKILL_DIR)
+    examples = load_retrieval_dataset(Path(__file__).parent / "fixtures" / "retrieval_eval.jsonl")
+
+    result = evaluate_retrieval(SkillSearcher(skills), examples, top_k=1)
+
+    assert result.query_count == 2
+    assert result.recall_at_k == 1.0
+    assert result.mrr == 1.0
+    assert result.misses == []

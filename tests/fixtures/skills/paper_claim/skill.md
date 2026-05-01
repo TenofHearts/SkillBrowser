@@ -6,3 +6,6 @@ Identify the central claim, then the method, evidence, findings, and limitations
 
 # Output Format
 Return concise markdown with sections for claim, method, findings, evidence, and limitations.
+
+# Caveats
+Do not invent claims or methods that are not supported by the paper text.
