@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 tests/.tmp/
+data/indexes/
 .uv-cache/
 .venv/
 venv/

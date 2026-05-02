@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from skill_search_agent.loader import SkillLoadError, load_skills
+from skill_search_agent.cli import main
 from skill_search_agent.evaluation import evaluate_retrieval, load_retrieval_dataset
 from skill_search_agent.reader import SkillReader
 from skill_search_agent.registry import rebuild_registry, registry_summary
@@ -93,3 +94,21 @@ def test_retrieval_evaluation_reports_metrics() -> None:
     assert result.recall_at_k == 1.0
     assert result.mrr == 1.0
     assert result.misses == []
+
+
+def test_cli_accepts_skill_dir_before_command(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["--skill-dir", str(SKILL_DIR), "validate-skills"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert '"skill_count": 2' in captured.out
+
+
+def test_cli_accepts_skill_dir_after_command(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["validate-skills", "--skill-dir", str(SKILL_DIR)])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert '"skill_count": 2' in captured.out

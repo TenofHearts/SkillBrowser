@@ -22,24 +22,34 @@ def print_json(model: BaseModel) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="skill-agent")
     parser.add_argument("--skill-dir", default="data/skills", help="Directory containing */skill.yaml")
+    command_parent = argparse.ArgumentParser(add_help=False)
+    command_parent.add_argument(
+        "--skill-dir",
+        dest="skill_dir",
+        default=argparse.SUPPRESS,
+        help="Directory containing */skill.yaml",
+    )
+
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("validate-skills", help="Validate local skill specs")
+    sub.add_parser("validate-skills", parents=[command_parent], help="Validate local skill specs")
 
-    build_index = sub.add_parser("build-index", help="Build the local SQLite skill registry")
+    build_index = sub.add_parser("build-index", parents=[command_parent], help="Build the local SQLite skill registry")
     build_index.add_argument("--index-dir", default="data/indexes")
     build_index.add_argument("--db-path")
 
-    search = sub.add_parser("search", help="Search local skills")
+    search = sub.add_parser("search", parents=[command_parent], help="Search local skills")
     search.add_argument("query")
     search.add_argument("--top-k", type=int, default=5)
 
-    read = sub.add_parser("read", help="Read a skill document or section")
+    read = sub.add_parser("read", parents=[command_parent], help="Read a skill document or section")
     read.add_argument("skill_id")
     read.add_argument("--section")
     read.add_argument("--max-tokens", type=int, default=2000)
 
-    eval_retrieval = sub.add_parser("eval-retrieval", help="Evaluate skill retrieval on a JSONL dataset")
+    eval_retrieval = sub.add_parser(
+        "eval-retrieval", parents=[command_parent], help="Evaluate skill retrieval on a JSONL dataset"
+    )
     eval_retrieval.add_argument("--dataset", required=True)
     eval_retrieval.add_argument("--top-k", type=int, default=5)
 
