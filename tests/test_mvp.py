@@ -15,7 +15,7 @@ from skill_search_agent.gatewaybench import (
 from skill_search_agent.reader import SkillReader
 from skill_search_agent.registry import rebuild_registry, registry_summary
 from skill_search_agent.schema import SkillReadRequest, SkillSearchRequest
-from skill_search_agent.search import SkillSearcher
+from skill_search_agent.search import SkillSearcher, rrf_fusion
 from skill_search_agent.views import build_skill_search_text
 
 
@@ -39,6 +39,67 @@ def test_search_returns_relevant_skill() -> None:
 def test_search_penalizes_when_not_to_use_matches() -> None:
     skills = load_skills(SKILL_DIR)
     response = SkillSearcher(skills).search(SkillSearchRequest(query="OCR screenshot image", top_k=5))
+    assert all(card.id != "pdf.extract_text" for card in response.results)
+
+
+def test_rrf_fuses_independent_rank_lists() -> None:
+    fused = rrf_fusion(
+        [
+            ["first", "second"],
+            ["second", "first"],
+        ],
+        k=10,
+    )
+
+    assert fused["first"] == pytest.approx((1 / 11) + (1 / 12))
+    assert fused["second"] == pytest.approx((1 / 12) + (1 / 11))
+
+
+def test_multi_view_retrieval_uses_example_and_vector_rank_lists() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(skills).search(SkillSearchRequest(query="main contribution", top_k=1))
+
+    assert response.results[0].id == "research.paper_claim_method_finding"
+    assert response.results[0].score_breakdown.vector > 0
+    assert response.results[0].score_breakdown.rrf > 0
+
+
+def test_request_capability_and_type_hints_influence_search() -> None:
+    skills = load_skills(SKILL_DIR)
+    searcher = SkillSearcher(skills)
+
+    paper_response = searcher.search(
+        SkillSearchRequest(
+            query="handle this",
+            required_capabilities=["extract_method"],
+            input_types=["paper_text"],
+            output_types=["structured_text"],
+            top_k=1,
+        )
+    )
+    pdf_response = searcher.search(
+        SkillSearchRequest(
+            query="handle this",
+            required_capabilities=["read_pdf"],
+            input_types=["pdf"],
+            output_types=["json"],
+            top_k=1,
+        )
+    )
+
+    assert paper_response.results[0].id == "research.paper_claim_method_finding"
+    assert paper_response.results[0].score_breakdown.capability > 0
+    assert paper_response.results[0].score_breakdown.input_type > 0
+    assert paper_response.results[0].score_breakdown.output_type > 0
+    assert pdf_response.results[0].id == "pdf.extract_text"
+
+
+def test_contraindication_remains_stronger_than_hybrid_positive_matches() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(skills).search(
+        SkillSearchRequest(query="extract text from screenshot OCR image", input_types=["image"], top_k=5)
+    )
+
     assert all(card.id != "pdf.extract_text" for card in response.results)
 
 

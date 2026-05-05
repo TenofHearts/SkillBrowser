@@ -129,12 +129,20 @@ class SkillSpec(BaseModel):
 class SkillSearchRequest(BaseModel):
     query: str
     top_k: int = Field(default=5, ge=1, le=50)
+    task_context: Optional[str] = None
+    required_capabilities: list[str] = Field(default_factory=list)
+    input_types: list[str] = Field(default_factory=list)
+    output_types: list[str] = Field(default_factory=list)
 
 
 class ScoreBreakdown(BaseModel):
     lexical: float
     capability: float
     usage: float
+    vector: float = 0.0
+    rrf: float = 0.0
+    input_type: float = 0.0
+    output_type: float = 0.0
     contraindication_penalty: float = 0.0
 
 
