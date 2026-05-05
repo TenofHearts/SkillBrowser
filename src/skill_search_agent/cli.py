@@ -9,6 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from .loader import SkillLoadError, load_skills
 from .evaluation import evaluate_retrieval, load_retrieval_dataset
+from .gatewaybench import evaluate_gatewaybench_lite, load_gatewaybench_lite_dataset
 from .reader import SkillReader
 from .registry import default_db_path, dump_json_summary, rebuild_registry
 from .schema import SkillReadRequest, SkillSearchRequest
@@ -53,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
     eval_retrieval.add_argument("--dataset", required=True)
     eval_retrieval.add_argument("--top-k", type=int, default=5)
 
+    eval_gatewaybench = sub.add_parser(
+        "eval-gatewaybench-lite",
+        help="Evaluate skill retrieval on a local GatewayBench JSONL export",
+    )
+    eval_gatewaybench.add_argument("--dataset", required=True)
+    eval_gatewaybench.add_argument("--top-k", type=int, default=5)
+    eval_gatewaybench.add_argument("--limit", type=int)
+
     return parser
 
 
@@ -61,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "eval-gatewaybench-lite":
+            examples = load_gatewaybench_lite_dataset(args.dataset, limit=args.limit)
+            print_json(evaluate_gatewaybench_lite(examples, args.top_k))
+            return 0
+
         skills = load_skills(Path(args.skill_dir))
         if args.command == "validate-skills":
             print(json.dumps({"ok": True, "skill_count": len(skills), "skill_ids": [s.id for s in skills]}, indent=2))

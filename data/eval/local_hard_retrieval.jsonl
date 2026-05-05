@@ -1,0 +1,10 @@
+{"query": "scan a PDF report and preserve page order", "expected_skill_ids": ["pdf.extract_text"], "expected_section": "overview"}
+{"query": "extract tables from workbook.xlsx", "expected_skill_ids": [], "allow_no_result": true}
+{"query": "open customers.csv and inspect missing values", "expected_skill_ids": ["csv.read", "analysis.data_exploration_workflow"]}
+{"query": "profile a tabular dataset before modeling", "expected_skill_ids": ["analysis.data_exploration_workflow"]}
+{"query": "turn study notes into a 150 word abstract", "expected_skill_ids": ["writing.academic_abstract"]}
+{"query": "identify the central contribution and evidence in a research article", "expected_skill_ids": ["research.paper_claim_method_finding"]}
+{"query": "translate this academic paper into French", "expected_skill_ids": [], "allow_no_result": true}
+{"query": "read a scanned screenshot with OCR", "expected_skill_ids": [], "allow_no_result": true}
+{"query": "summarize a PDF paper claim method findings", "expected_skill_ids": ["pdf.extract_text", "research.paper_claim_method_finding"]}
+{"query": "make my abstract less verbose while preserving scholarly tone", "expected_skill_ids": ["writing.academic_abstract"]}

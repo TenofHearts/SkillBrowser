@@ -17,7 +17,7 @@ Executable skill invocation is planned but not implemented yet.
 - Search skills with an in-memory lexical/capability scorer.
 - Read a full skill document or a specific section with a token budget.
 - Build a SQLite registry containing skills, documents, sections, and generated search views.
-- Run a small retrieval evaluation dataset.
+- Run small retrieval, local hard-query, and optional GatewayBench-lite evaluation datasets.
 
 ## Setup
 
@@ -57,6 +57,18 @@ Run retrieval evaluation:
 uv run skill-agent eval-retrieval --skill-dir tests/fixtures/skills --dataset tests/fixtures/retrieval_eval.jsonl --top-k 1
 ```
 
+Run the local hard-query retrieval benchmark:
+
+```powershell
+uv run skill-agent eval-retrieval --skill-dir data/skills --dataset data/eval/local_hard_retrieval.jsonl --top-k 3
+```
+
+Run a GatewayBench-lite JSONL export:
+
+```powershell
+uv run skill-agent eval-gatewaybench-lite --dataset path/to/gatewaybench.jsonl --top-k 5 --limit 100
+```
+
 `--skill-dir` is accepted either before or after the subcommand.
 
 ## Tests
@@ -74,4 +86,3 @@ The project is in an early MVP state:
 - Milestone 3 is partial: search returns ranked skill cards with score breakdowns, but it is not yet a true hybrid search engine with RRF, dense retrieval, filters, or search logs.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
 - Milestones 5-7 are not implemented: agent loop, full evaluation pipeline, and optional skill invocation remain future work.
-

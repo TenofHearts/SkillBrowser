@@ -7,11 +7,16 @@ import pytest
 
 from skill_search_agent.loader import SkillLoadError, load_skills
 from skill_search_agent.cli import main
-from skill_search_agent.evaluation import evaluate_retrieval, load_retrieval_dataset
+from skill_search_agent.evaluation import RetrievalExample, evaluate_retrieval, load_retrieval_dataset, score_retrieval_result
+from skill_search_agent.gatewaybench import (
+    gateway_example_to_skills,
+    load_gatewaybench_lite_dataset,
+)
 from skill_search_agent.reader import SkillReader
 from skill_search_agent.registry import rebuild_registry, registry_summary
 from skill_search_agent.schema import SkillReadRequest, SkillSearchRequest
 from skill_search_agent.search import SkillSearcher
+from skill_search_agent.views import build_skill_search_text
 
 
 SKILL_DIR = Path(__file__).parent / "fixtures" / "skills"
@@ -93,7 +98,108 @@ def test_retrieval_evaluation_reports_metrics() -> None:
     assert result.query_count == 2
     assert result.recall_at_k == 1.0
     assert result.mrr == 1.0
+    assert result.precision_at_k == 1.0
+    assert result.f1_at_k == 1.0
     assert result.misses == []
+
+
+def test_legacy_retrieval_examples_normalize_to_expected_skill_ids() -> None:
+    examples = load_retrieval_dataset(Path(__file__).parent / "fixtures" / "retrieval_eval.jsonl")
+
+    assert examples[0].expected_skill_ids == ["pdf.extract_text"]
+
+
+def test_multi_answer_retrieval_metrics_score_sets() -> None:
+    example = RetrievalExample(
+        query="summarize a PDF paper claim method findings",
+        expected_skill_ids=["pdf.extract_text", "research.paper_claim_method_finding"],
+    )
+
+    stats = score_retrieval_result(example, ["research.paper_claim_method_finding", "pdf.extract_text"], top_k=2)
+
+    assert stats["hit"] is True
+    assert stats["recall"] == 1.0
+    assert stats["precision"] == 1.0
+    assert stats["f1"] == 1.0
+
+
+def test_precision_at_k_counts_missing_results_as_false_positives() -> None:
+    example = RetrievalExample(query="extract text from a PDF", expected_skill_ids=["pdf.extract_text"])
+
+    stats = score_retrieval_result(example, ["pdf.extract_text"], top_k=5)
+
+    assert stats["precision"] == 0.2
+
+
+def test_abstention_examples_penalize_non_empty_results() -> None:
+    example = RetrievalExample(query="read a scanned screenshot with OCR", allow_no_result=True)
+
+    empty_stats = score_retrieval_result(example, [], top_k=1)
+    non_empty_stats = score_retrieval_result(example, ["csv.read"], top_k=1)
+
+    assert empty_stats["hit"] is True
+    assert non_empty_stats["hit"] is False
+    assert non_empty_stats["recall"] == 0.0
+
+
+def test_irrelevant_returned_skills_are_counted() -> None:
+    example = RetrievalExample(
+        query="load customer data",
+        expected_skill_ids=["csv.read"],
+        relevance_by_id={"csv.read": "required", "pdf.extract_text": "irrelevant"},
+    )
+
+    stats = score_retrieval_result(example, ["pdf.extract_text", "csv.read"], top_k=2)
+
+    assert stats["irrelevant_returned"] == 1
+
+
+def test_gatewaybench_lite_filters_and_hides_relevance_labels() -> None:
+    examples = load_gatewaybench_lite_dataset(Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl")
+
+    assert [example.id for example in examples] == ["gb-1", "gb-2"]
+
+    searchable_text = "\n".join(build_skill_search_text(skill) for skill in gateway_example_to_skills(examples[0]))
+
+    assert "required" not in searchable_text
+    assert "irrelevant" not in searchable_text
+
+
+def test_local_hard_retrieval_eval_cli_smoke(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(
+        [
+            "eval-retrieval",
+            "--skill-dir",
+            "data/skills",
+            "--dataset",
+            "data/eval/local_hard_retrieval.jsonl",
+            "--top-k",
+            "3",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert '"query_count": 10' in captured.out
+    assert '"irrelevant_selection_rate"' in captured.out
+
+
+def test_gatewaybench_lite_eval_cli_smoke(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(
+        [
+            "eval-gatewaybench-lite",
+            "--dataset",
+            str(Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl"),
+            "--top-k",
+            "2",
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert '"query_count": 2' in captured.out
 
 
 def test_cli_accepts_skill_dir_before_command(capsys: pytest.CaptureFixture[str]) -> None:
