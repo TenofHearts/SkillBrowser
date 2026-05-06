@@ -81,6 +81,37 @@ Run a GatewayBench-lite JSONL export:
 uv run skill-agent eval-gatewaybench-lite --dataset path/to/gatewaybench.jsonl --top-k 5 --limit 100
 ```
 
+Run the LLM skill-selection agent with a deterministic mock model:
+
+```powershell
+uv run skill-agent run-agent "extract text from a PDF" --skill-dir data/skills --top-k 3 --llm mock
+```
+
+Run the agent with an OpenAI-compatible hosted model endpoint. The recommended default model for meaningful agent/tool-selection tests is `Qwen/Qwen3.5-397B-A17B`; lower-cost Qwen variants or GLM endpoints can be used by changing `model` in `config.toml`.
+
+```powershell
+Copy-Item config.example.toml config.toml
+# Edit config.toml with your provider URL, API key, model, and benchmark defaults.
+uv run skill-agent run-agent "extract text from a PDF" --skill-dir data/skills --top-k 3 --llm openai-compatible --config config.toml
+```
+
+Compare the hybrid search selector against an LLM baseline using `config.toml` defaults:
+
+```powershell
+uv run skill-agent eval-gatewaybench-compare --config config.toml
+```
+
+The command-line flags remain available as overrides for `gatewaybench_compare.dataset`, `gatewaybench_compare.limit`, `gatewaybench_compare.top_k`, `gatewaybench_compare.selectors`, and `gatewaybench_compare.llm`.
+
+```toml
+[gatewaybench_compare]
+dataset = "path/to/gatewaybench.jsonl"
+limit = 50
+top_k = 5
+selectors = ["hybrid", "llm-baseline"]
+llm = "openai-compatible"
+```
+
 `--skill-dir` is accepted either before or after the subcommand.
 
 ## Tests
@@ -97,4 +128,6 @@ The project is in an early MVP state:
 - Milestone 2 is partial: multi-view text is generated and persisted, and in-memory BM25 plus token-vector view indexes exist; persistent BM25, FAISS/dense indexing, id maps, and reloadable index files are not implemented.
 - Milestone 3 is partial: search returns ranked skill cards from BM25/vector RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, learned dense retrieval, reranking, and search logs are not implemented.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
-- Milestones 5-7 are not implemented: agent loop, full evaluation pipeline, and optional skill invocation remain future work.
+- Milestone 5 now has an initial LLM-backed agent loop for search/read/final-answer workflows.
+- Milestone 6 now has selector-based GatewayBench comparison for hybrid search versus an LLM baseline.
+- Milestone 7 is not implemented: optional skill invocation remains future work.

@@ -182,3 +182,51 @@ class SkillReadResponse(BaseModel):
     token_count: int
     truncated: bool
     available_sections: list[str]
+
+
+class AgentRunRequest(BaseModel):
+    task: str
+    top_k: int = Field(default=5, ge=1, le=50)
+    max_steps: int = Field(default=4, ge=1, le=20)
+    read_max_tokens: int = Field(default=2000, ge=1)
+
+
+class AgentStep(BaseModel):
+    step: int
+    action: str
+    input: Dict[str, Any] = Field(default_factory=dict)
+    observation: Dict[str, Any] = Field(default_factory=dict)
+    raw_model_output: Optional[str] = None
+    error: Optional[str] = None
+
+
+class AgentRunResult(BaseModel):
+    task: str
+    final_answer: str
+    selected_skill_ids: list[str] = Field(default_factory=list)
+    read_skill_ids: list[str] = Field(default_factory=list)
+    steps: list[AgentStep] = Field(default_factory=list)
+    parse_errors: list[str] = Field(default_factory=list)
+
+
+class CandidateTool(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class ToolSelectionRequest(BaseModel):
+    prompt: str
+    candidates: list[CandidateTool]
+    top_k: int = Field(default=5, ge=1, le=50)
+    task_context: Optional[str] = None
+
+
+class ToolSelectionResult(BaseModel):
+    ranked_tool_ids: list[str]
+    raw_model_output: Optional[str] = None
+    parse_error: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: int = 0
+    token_usage_source: str = "none"

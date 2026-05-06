@@ -1,0 +1,21 @@
+[llm]
+base_url = "https://your-provider.example/v1"
+api_key = "replace-with-your-api-key"
+model = "Qwen/Qwen3.5-397B-A17B"
+temperature = 0.0
+max_tokens = 1024
+timeout = 120.0
+
+[agent]
+llm = "mock"
+top_k = 5
+max_steps = 4
+read_max_tokens = 2000
+
+[gatewaybench_compare]
+dataset = "tests/fixtures/gatewaybench_lite.jsonl"
+limit = 50
+top_k = 5
+selectors = ["hybrid", "llm-baseline"]
+llm = "mock"
+workers = 10
