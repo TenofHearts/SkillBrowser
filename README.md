@@ -95,7 +95,7 @@ Copy-Item config.example.toml config.toml
 uv run skill-agent run-agent "extract text from a PDF" --skill-dir data/skills --top-k 3 --llm openai-compatible --config config.toml
 ```
 
-Compare the hybrid search selector against an LLM baseline using `config.toml` defaults:
+Compare the LLM agent with hybrid `skill_search` against an LLM baseline that sees all candidate tools using `config.toml` defaults:
 
 ```powershell
 uv run skill-agent eval-gatewaybench-compare --config config.toml
@@ -129,5 +129,5 @@ The project is in an early MVP state:
 - Milestone 3 is partial: search returns ranked skill cards from BM25/vector RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, learned dense retrieval, reranking, and search logs are not implemented.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
 - Milestone 5 now has an initial LLM-backed agent loop for search/read/final-answer workflows.
-- Milestone 6 now has selector-based GatewayBench comparison for hybrid search versus an LLM baseline.
+- Milestone 6 now has selector-based GatewayBench comparison for LLM skill selection with hybrid `skill_search` versus an all-candidate LLM baseline.
 - Milestone 7 is not implemented: optional skill invocation remains future work.

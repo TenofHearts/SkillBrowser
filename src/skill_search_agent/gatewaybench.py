@@ -11,6 +11,7 @@ from typing import Any, Iterable, Optional
 from pydantic import BaseModel, Field
 
 from .evaluation import RetrievalEvalResult, RetrievalExample, score_retrieval_result
+from .llm import LLMClient
 from .schema import CandidateTool, SkillSearchRequest, SkillSpec, ToolSelectionRequest
 from .search import SkillSearcher
 from .selectors import HybridSearchToolSelector, ToolSelector
@@ -322,8 +323,8 @@ def compare_gatewaybench_selectors(
     )
 
 
-def make_gatewaybench_hybrid_selector(example: GatewayBenchExample) -> ToolSelector:
-    return HybridSearchToolSelector(SkillSearcher(gateway_example_to_skills(example)))
+def make_gatewaybench_hybrid_selector(example: GatewayBenchExample, llm: LLMClient) -> ToolSelector:
+    return HybridSearchToolSelector(SkillSearcher(gateway_example_to_skills(example)), llm)
 
 
 def _evaluate_gatewaybench_selector_example(

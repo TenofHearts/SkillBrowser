@@ -25,7 +25,7 @@ class LLMConfig(BaseModel):
 class AgentConfig(BaseModel):
     llm: str = "mock"
     top_k: int = 5
-    max_steps: int = 4
+    max_steps: int = 5
     read_max_tokens: int = 2000
 
 

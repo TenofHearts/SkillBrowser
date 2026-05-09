@@ -9,7 +9,7 @@ timeout = 120.0
 [agent]
 llm = "mock"
 top_k = 5
-max_steps = 4
+max_steps = 5
 read_max_tokens = 2000
 
 [gatewaybench_compare]

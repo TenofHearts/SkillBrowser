@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             requested_selectors = args.selector or config.gatewaybench_compare.selectors
             factories = {}
             if "hybrid" in requested_selectors:
-                factories["hybrid"] = make_gatewaybench_hybrid_selector
+                factories["hybrid"] = lambda example: make_gatewaybench_hybrid_selector(example, llm)
             if "llm-baseline" in requested_selectors:
                 factories["llm-baseline"] = lambda _example: BaselineLLMToolSelector(llm)
             print_json(compare_gatewaybench_selectors(examples, factories, top_k, workers=workers, progress=True))

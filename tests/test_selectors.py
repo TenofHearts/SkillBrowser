@@ -10,7 +10,12 @@ from skill_search_agent.gatewaybench import (
 from skill_search_agent.llm import MockLLMClient
 from skill_search_agent.schema import ToolSelectionRequest
 from skill_search_agent.search import SkillSearcher
-from skill_search_agent.selectors import BaselineLLMToolSelector, HybridSearchToolSelector, parse_selection_json
+from skill_search_agent.selectors import (
+    BaselineLLMToolSelector,
+    HybridSearchToolSelector,
+    parse_selection_json,
+    parse_skill_search_decision,
+)
 
 
 GATEWAY_FIXTURE = Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl"
@@ -18,7 +23,13 @@ GATEWAY_FIXTURE = Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl"
 
 def test_hybrid_selector_returns_gatewaybench_skill_ids() -> None:
     example = load_gatewaybench_lite_dataset(GATEWAY_FIXTURE, limit=1)[0]
-    selector = HybridSearchToolSelector(SkillSearcher(gateway_example_to_skills(example)))
+    llm = MockLLMClient(
+        [
+            '{"action": "skill_search"}',
+            '{"ranked_tool_ids": ["gateway.query_payments", "gateway.get_invoice"]}',
+        ]
+    )
+    selector = HybridSearchToolSelector(SkillSearcher(gateway_example_to_skills(example)), llm)
 
     result = selector.select(
         ToolSelectionRequest(
@@ -30,6 +41,9 @@ def test_hybrid_selector_returns_gatewaybench_skill_ids() -> None:
 
     assert result.ranked_tool_ids
     assert all(tool_id.startswith("gateway.") for tool_id in result.ranked_tool_ids)
+    assert len(llm.calls) == 2
+    selection_prompt = llm.calls[1][1]["content"]
+    assert "retrieval_rank" in selection_prompt
 
 
 def test_llm_selector_parses_json_and_hides_relevance_labels() -> None:
@@ -66,4 +80,11 @@ def test_llm_selector_parses_fenced_json_output() -> None:
     )
 
     assert ranked == ["gateway.query_payments"]
+    assert error is None
+
+
+def test_hybrid_selector_parses_skill_search_decision() -> None:
+    query, error = parse_skill_search_decision('{"action": "skill_search"}', default_query="payments and invoices")
+
+    assert query == "payments and invoices"
     assert error is None

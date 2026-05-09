@@ -187,7 +187,7 @@ class SkillReadResponse(BaseModel):
 class AgentRunRequest(BaseModel):
     task: str
     top_k: int = Field(default=5, ge=1, le=50)
-    max_steps: int = Field(default=4, ge=1, le=20)
+    max_steps: int = Field(default=5, ge=1, le=20)
     read_max_tokens: int = Field(default=2000, ge=1)
 
 

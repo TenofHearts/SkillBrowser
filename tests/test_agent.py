@@ -18,6 +18,7 @@ def test_agent_searches_reads_and_returns_final_answer() -> None:
     skills = load_skills(SKILL_DIR)
     llm = MockLLMClient(
         [
+            '{"action": "skill_search", "query": "extract text from a PDF"}',
             '{"selected_ids": ["pdf.extract_text"], "reason": "PDF text extraction is needed."}',
             '{"final_answer": "Use the PDF extraction skill before downstream analysis."}',
         ]
@@ -31,6 +32,7 @@ def test_agent_searches_reads_and_returns_final_answer() -> None:
     assert result.read_skill_ids == ["pdf.extract_text"]
     assert result.final_answer == "Use the PDF extraction skill before downstream analysis."
     assert [step.action for step in result.steps] == [
+        "llm_decide_tools",
         "skill_search",
         "llm_choose_skill",
         "skill_read",
@@ -40,7 +42,13 @@ def test_agent_searches_reads_and_returns_final_answer() -> None:
 
 def test_agent_records_parse_errors_and_falls_back_to_top_search_result() -> None:
     skills = load_skills(SKILL_DIR)
-    llm = MockLLMClient(["not json", '{"final_answer": "Fallback still produced an answer."}'])
+    llm = MockLLMClient(
+        [
+            '{"action": "skill_search", "query": "extract text from a PDF"}',
+            "not json",
+            '{"final_answer": "Fallback still produced an answer."}',
+        ]
+    )
 
     result = SkillAgent(SkillSearcher(skills), SkillReader(skills), llm).run(
         AgentRunRequest(task="extract text from a PDF", top_k=1)
@@ -48,7 +56,7 @@ def test_agent_records_parse_errors_and_falls_back_to_top_search_result() -> Non
 
     assert result.selected_skill_ids == ["pdf.extract_text"]
     assert result.parse_errors
-    assert result.steps[1].error is not None
+    assert result.steps[2].error is not None
     assert result.final_answer == "Fallback still produced an answer."
 
 

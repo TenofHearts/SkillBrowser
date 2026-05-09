@@ -19,6 +19,10 @@ def test_gatewaybench_compare_reports_metrics_for_each_selector() -> None:
     examples = load_gatewaybench_lite_dataset(GATEWAY_FIXTURE)
     llm = MockLLMClient(
         [
+            '{"action": "skill_search"}',
+            '{"ranked_tool_ids": ["gateway.query_payments", "gateway.get_invoice"]}',
+            '{"action": "skill_search"}',
+            '{"ranked_tool_ids": ["gateway.get_employee", "gateway.get_benefits"]}',
             '{"ranked_tool_ids": ["gateway.query_payments", "gateway.get_invoice"]}',
             '{"ranked_tool_ids": ["gateway.get_employee", "gateway.get_benefits"]}',
         ]
@@ -27,7 +31,7 @@ def test_gatewaybench_compare_reports_metrics_for_each_selector() -> None:
     result = compare_gatewaybench_selectors(
         examples,
         {
-            "hybrid": make_gatewaybench_hybrid_selector,
+            "hybrid": lambda example: make_gatewaybench_hybrid_selector(example, llm),
             "llm-baseline": lambda _example: BaselineLLMToolSelector(llm),
         },
         top_k=2,
