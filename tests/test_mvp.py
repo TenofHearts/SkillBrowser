@@ -5,18 +5,18 @@ from uuid import uuid4
 
 import pytest
 
-from skill_search_agent.loader import SkillLoadError, load_skills
-from skill_search_agent.cli import main
-from skill_search_agent.evaluation import RetrievalExample, evaluate_retrieval, load_retrieval_dataset, score_retrieval_result
-from skill_search_agent.gatewaybench import (
-    gateway_example_to_skills,
-    load_gatewaybench_lite_dataset,
+from benchmarks.retrieval import (
+    RetrievalExample,
+    evaluate_retrieval,
+    load_retrieval_dataset,
+    score_retrieval_result,
 )
-from skill_search_agent.reader import SkillReader
-from skill_search_agent.registry import rebuild_registry, registry_summary
-from skill_search_agent.schema import SkillReadRequest, SkillSearchRequest
-from skill_search_agent.search import SkillSearcher, rrf_fusion
-from skill_search_agent.views import build_skill_search_text
+from cli import main
+from core.search import SkillSearcher, rrf_fusion
+from loader import SkillLoadError, load_skills
+from reader import SkillReader
+from registry import rebuild_registry, registry_summary
+from schema import SkillReadRequest, SkillSearchRequest
 
 
 SKILL_DIR = Path(__file__).parent / "fixtures" / "skills"
@@ -215,17 +215,6 @@ def test_irrelevant_returned_skills_are_counted() -> None:
     assert stats["irrelevant_returned"] == 1
 
 
-def test_gatewaybench_lite_filters_and_hides_relevance_labels() -> None:
-    examples = load_gatewaybench_lite_dataset(Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl")
-
-    assert [example.id for example in examples] == ["gb-1", "gb-2"]
-
-    searchable_text = "\n".join(build_skill_search_text(skill) for skill in gateway_example_to_skills(examples[0]))
-
-    assert "required" not in searchable_text
-    assert "irrelevant" not in searchable_text
-
-
 def test_local_hard_retrieval_eval_cli_smoke(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(
         [
@@ -244,23 +233,6 @@ def test_local_hard_retrieval_eval_cli_smoke(capsys: pytest.CaptureFixture[str])
     assert exit_code == 0
     assert '"query_count": 10' in captured.out
     assert '"irrelevant_selection_rate"' in captured.out
-
-
-def test_gatewaybench_lite_eval_cli_smoke(capsys: pytest.CaptureFixture[str]) -> None:
-    exit_code = main(
-        [
-            "eval-gatewaybench-lite",
-            "--dataset",
-            str(Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl"),
-            "--top-k",
-            "2",
-        ]
-    )
-
-    captured = capsys.readouterr()
-
-    assert exit_code == 0
-    assert '"query_count": 2' in captured.out
 
 
 def test_cli_accepts_skill_dir_before_command(capsys: pytest.CaptureFixture[str]) -> None:

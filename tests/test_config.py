@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from skill_search_agent.config import load_app_config
+from config import load_app_config
 
 
 def test_load_app_config_from_toml(tmp_path: Path) -> None:
@@ -23,13 +23,22 @@ top_k = 3
 max_steps = 4
 read_max_tokens = 1000
 
-[gatewaybench_compare]
-dataset = "tests/fixtures/gatewaybench_lite.jsonl"
-limit = 50
-top_k = 5
-selectors = ["hybrid", "llm-baseline"]
+[toolret]
+queries = "tests/fixtures/toolret_queries.jsonl"
+tools = "tests/fixtures/toolret_tools.jsonl"
+first_stage_candidates = "tests/fixtures/toolret_candidates.jsonl"
+subset = "apibank"
+category = "web"
+limit = 30
+top_k = 10
+use_instruction = true
+baseline = "rankgpt"
 llm = "mock"
-workers = 10
+candidate_pool_size = 100
+rankgpt_window_size = 20
+rankgpt_step_size = 10
+workers = 4
+output = "toolret-result.json"
 """,
         encoding="utf-8",
     )
@@ -43,6 +52,12 @@ workers = 10
     assert config.llm.max_tokens == 2048
     assert config.llm.timeout == 30.0
     assert config.agent.top_k == 3
-    assert config.gatewaybench_compare.dataset == "tests/fixtures/gatewaybench_lite.jsonl"
-    assert config.gatewaybench_compare.selectors == ["hybrid", "llm-baseline"]
-    assert config.gatewaybench_compare.workers == 10
+    assert config.toolret.queries == "tests/fixtures/toolret_queries.jsonl"
+    assert config.toolret.tools == "tests/fixtures/toolret_tools.jsonl"
+    assert config.toolret.first_stage_candidates == "tests/fixtures/toolret_candidates.jsonl"
+    assert config.toolret.category == "web"
+    assert config.toolret.baseline == "rankgpt"
+    assert config.toolret.candidate_pool_size == 100
+    assert config.toolret.rankgpt_window_size == 20
+    assert config.toolret.rankgpt_step_size == 10
+    assert config.toolret.workers == 4

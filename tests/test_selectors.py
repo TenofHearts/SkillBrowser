@@ -2,72 +2,66 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from skill_search_agent.gatewaybench import (
-    gateway_example_to_candidate_tools,
-    gateway_example_to_skills,
-    load_gatewaybench_lite_dataset,
-)
-from skill_search_agent.llm import MockLLMClient
-from skill_search_agent.schema import ToolSelectionRequest
-from skill_search_agent.search import SkillSearcher
-from skill_search_agent.selectors import (
+from core.search import SkillSearcher
+from core.selectors import (
     BaselineLLMToolSelector,
     HybridSearchToolSelector,
     parse_selection_json,
     parse_skill_search_decision,
 )
+from loader import load_skills
+from llm import MockLLMClient
+from schema import CandidateTool, ToolSelectionRequest
 
 
-GATEWAY_FIXTURE = Path(__file__).parent / "fixtures" / "gatewaybench_lite.jsonl"
+SKILL_DIR = Path(__file__).parent / "fixtures" / "skills"
 
 
-def test_hybrid_selector_returns_gatewaybench_skill_ids() -> None:
-    example = load_gatewaybench_lite_dataset(GATEWAY_FIXTURE, limit=1)[0]
+def test_hybrid_selector_returns_retrieved_skill_ids() -> None:
+    skills = load_skills(SKILL_DIR)
     llm = MockLLMClient(
         [
             '{"action": "skill_search"}',
-            '{"ranked_tool_ids": ["gateway.query_payments", "gateway.get_invoice"]}',
+            '{"ranked_tool_ids": ["pdf.extract_text"]}',
         ]
     )
-    selector = HybridSearchToolSelector(SkillSearcher(gateway_example_to_skills(example)), llm)
+    selector = HybridSearchToolSelector(SkillSearcher(skills), llm)
 
     result = selector.select(
         ToolSelectionRequest(
-            prompt=example.user_prompt,
-            candidates=gateway_example_to_candidate_tools(example),
+            prompt="extract text from a PDF",
+            candidates=[],
             top_k=2,
         )
     )
 
-    assert result.ranked_tool_ids
-    assert all(tool_id.startswith("gateway.") for tool_id in result.ranked_tool_ids)
+    assert result.ranked_tool_ids == ["pdf.extract_text"]
     assert len(llm.calls) == 2
     selection_prompt = llm.calls[1][1]["content"]
     assert "retrieval_rank" in selection_prompt
 
 
-def test_llm_selector_parses_json_and_hides_relevance_labels() -> None:
-    example = load_gatewaybench_lite_dataset(GATEWAY_FIXTURE, limit=1)[0]
-    llm = MockLLMClient(['{"ranked_tool_ids": ["gateway.query_payments", "gateway.get_invoice"]}'])
+def test_llm_selector_parses_json() -> None:
+    candidates = [
+        CandidateTool(id="pdf.extract_text", name="PDF Extract Text", description="Extract text from PDFs."),
+        CandidateTool(id="csv.read", name="CSV Read", description="Read CSV files."),
+    ]
+    llm = MockLLMClient(['{"ranked_tool_ids": ["pdf.extract_text"]}'])
     selector = BaselineLLMToolSelector(llm)
 
     result = selector.select(
         ToolSelectionRequest(
-            prompt=example.user_prompt,
-            candidates=gateway_example_to_candidate_tools(example),
+            prompt="extract text from a PDF",
+            candidates=candidates,
             top_k=2,
         )
     )
-    prompt_text = "\n".join(message["content"] for message in llm.calls[0])
 
-    assert result.ranked_tool_ids == ["gateway.query_payments", "gateway.get_invoice"]
-    assert "required" not in prompt_text
-    assert "irrelevant" not in prompt_text
-    assert "ideal_tool_subset" not in prompt_text
+    assert result.ranked_tool_ids == ["pdf.extract_text"]
 
 
 def test_llm_selector_reports_malformed_output() -> None:
-    ranked, error = parse_selection_json("not json", {"gateway.query_payments"})
+    ranked, error = parse_selection_json("not json", {"pdf.extract_text"})
 
     assert ranked == []
     assert error is not None
@@ -75,11 +69,11 @@ def test_llm_selector_reports_malformed_output() -> None:
 
 def test_llm_selector_parses_fenced_json_output() -> None:
     ranked, error = parse_selection_json(
-        '```json\n{"ranked_tool_ids": ["gateway.query_payments"]}\n```',
-        {"gateway.query_payments"},
+        '```json\n{"ranked_tool_ids": ["pdf.extract_text"]}\n```',
+        {"pdf.extract_text"},
     )
 
-    assert ranked == ["gateway.query_payments"]
+    assert ranked == ["pdf.extract_text"]
     assert error is None
 
 

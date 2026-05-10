@@ -1,0 +1,285 @@
+{
+  "query_count": 3,
+  "top_k": 10,
+  "use_instruction": true,
+  "recall_at": {
+    "1": 0.0,
+    "3": 0.1667,
+    "5": 0.1667,
+    "10": 0.1667
+  },
+  "precision_at_10": 0.0333,
+  "mrr_at_10": 0.1667,
+  "ndcg_at_10": 0.129,
+  "completeness_at_10": 0.0,
+  "parse_failure_count": 0,
+  "input_tokens": 17130,
+  "output_tokens": 7532,
+  "total_tokens": 24662,
+  "total_latency_ms": 143024,
+  "avg_latency_ms": 47674.67,
+  "wall_time_ms": 156286,
+  "token_usage_sources": {
+    "provider": 3
+  },
+  "by_category": {
+    "web": {
+      "recall@1": 0.0,
+      "recall@3": 0.1667,
+      "recall@5": 0.1667,
+      "recall@10": 0.1667,
+      "precision@10": 0.0333,
+      "mrr@10": 0.1667,
+      "ndcg@10": 0.129,
+      "completeness@10": 0.0
+    }
+  },
+  "misses": [
+    {
+      "id": "apibank_query_1",
+      "query": "Can you tell me today's date?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_23"
+      ],
+      "returned_skill_ids": [
+        "toolret.rotbench_tool_372",
+        "toolret.rotbench_tool_384",
+        "toolret.rotbench_tool_355",
+        "toolret.rotbench_tool_636",
+        "toolret.rotbench_tool_894",
+        "toolret.rotbench_tool_905",
+        "toolret.rotbench_tool_650",
+        "toolret.rotbench_tool_913",
+        "toolret.rotbench_tool_656",
+        "toolret.toolbench_tool_3448"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_3443": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.649,
+          "rrf": 0.9621,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apigen_tool_2643": {
+          "lexical": 0.9597,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.6168,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_384": {
+          "lexical": 0.6528,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 1.0,
+          "rrf": 0.9405,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8187": {
+          "lexical": 0.9218,
+          "capability": 1.0,
+          "usage": 0.72,
+          "vector": 0.3724,
+          "rrf": 0.6233,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_3448": {
+          "lexical": 0.8179,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.6085,
+          "rrf": 0.8526,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8682": {
+          "lexical": 0.8894,
+          "capability": 1.0,
+          "usage": 0.72,
+          "vector": 0.3402,
+          "rrf": 0.5169,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1320": {
+          "lexical": 0.8766,
+          "capability": 1.0,
+          "usage": 0.72,
+          "vector": 0.3433,
+          "rrf": 0.5196,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_59": {
+          "lexical": 0.8555,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.4877,
+          "rrf": 0.7707,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_355": {
+          "lexical": 0.6528,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9238,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_372": {
+          "lexical": 0.6528,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.91,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_2",
+      "query": "Can you tell me the current date?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_23"
+      ],
+      "returned_skill_ids": [
+        "toolret.tooleyes_tool_5",
+        "toolret.toolACE_tool_10875",
+        "toolret.apigen_tool_3280",
+        "toolret.toolbench_tool_9624",
+        "toolret.toolACE_tool_14166",
+        "toolret.gorilla_huggingface_tool_387",
+        "toolret.gorilla_huggingface_tool_382",
+        "toolret.gorilla_huggingface_tool_397",
+        "toolret.toolbench_tool_1215",
+        "toolret.taskbench_huggingface_tool_6"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_9624": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.5893,
+          "rrf": 0.8016,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_14166": {
+          "lexical": 0.8844,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.5968,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.gorilla_huggingface_tool_387": {
+          "lexical": 0.8117,
+          "capability": 1.0,
+          "usage": 0.72,
+          "vector": 0.5617,
+          "rrf": 0.6697,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_10875": {
+          "lexical": 0.8414,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.5861,
+          "rrf": 0.7209,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.gorilla_huggingface_tool_382": {
+          "lexical": 0.8348,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.5899,
+          "rrf": 0.713,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.gorilla_huggingface_tool_397": {
+          "lexical": 0.7638,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.5593,
+          "rrf": 0.6195,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1215": {
+          "lexical": 0.7829,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.5412,
+          "rrf": 0.5965,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.tooleyes_tool_5": {
+          "lexical": 0.4864,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.98,
+          "rrf": 0.9975,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.taskbench_huggingface_tool_6": {
+          "lexical": 0.7907,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5497,
+          "rrf": 0.6311,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.reversechain_tool_166": {
+          "lexical": 0.6691,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.658,
+          "rrf": 0.8141,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    }
+  ]
+}

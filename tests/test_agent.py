@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from skill_search_agent.cli import main
-from skill_search_agent.agent import SkillAgent
-from skill_search_agent.llm import MockLLMClient
-from skill_search_agent.loader import load_skills
-from skill_search_agent.reader import SkillReader
-from skill_search_agent.schema import AgentRunRequest
-from skill_search_agent.search import SkillSearcher
+from agent import SkillAgent
+from cli import main
+from core.search import SkillSearcher
+from llm import MockLLMClient
+from loader import load_skills
+from reader import SkillReader
+from schema import AgentRunRequest
 
 
 SKILL_DIR = Path(__file__).parent / "fixtures" / "skills"

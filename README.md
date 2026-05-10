@@ -17,7 +17,13 @@ Executable skill invocation is planned but not implemented yet.
 - Search skills with an in-memory dependency-light hybrid scorer: BM25, per-view token-vector cosine ranking, reciprocal-rank fusion, and request capability/type hints.
 - Read a full skill document or a specific section with a token budget.
 - Build a SQLite registry containing skills, documents, sections, and generated search views.
-- Run small retrieval, local hard-query, and optional GatewayBench-lite evaluation datasets.
+- Run small retrieval, local hard-query, and ToolRet evaluation datasets.
+
+## Project Layout
+
+- `src/core/` contains the general search, scoring, selection, sectioning, and view-building algorithms.
+- `src/benchmarks/` contains benchmark adapters and metric code for retrieval and ToolRet.
+- Top-level files in `src/` contain the CLI, agent loop, schema, loading, reading, registry, config, and LLM client code.
 
 ## Setup
 
@@ -75,12 +81,6 @@ Run the local hard-query retrieval benchmark:
 uv run skill-agent eval-retrieval --skill-dir data/skills --dataset data/eval/local_hard_retrieval.jsonl --top-k 3
 ```
 
-Run a GatewayBench-lite JSONL export:
-
-```powershell
-uv run skill-agent eval-gatewaybench-lite --dataset path/to/gatewaybench.jsonl --top-k 5 --limit 100
-```
-
 Run the LLM skill-selection agent with a deterministic mock model:
 
 ```powershell
@@ -95,24 +95,40 @@ Copy-Item config.example.toml config.toml
 uv run skill-agent run-agent "extract text from a PDF" --skill-dir data/skills --top-k 3 --llm openai-compatible --config config.toml
 ```
 
-Compare the LLM agent with hybrid `skill_search` against an LLM baseline that sees all candidate tools using `config.toml` defaults:
+`--skill-dir` is accepted either before or after the subcommand.
+
+Run ToolRet retrieval-only evaluation against ToolRet query/tool exports:
 
 ```powershell
-uv run skill-agent eval-gatewaybench-compare --config config.toml
+uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --top-k 10 --limit 30
 ```
 
-The command-line flags remain available as overrides for `gatewaybench_compare.dataset`, `gatewaybench_compare.limit`, `gatewaybench_compare.top_k`, `gatewaybench_compare.selectors`, and `gatewaybench_compare.llm`.
+The ToolRet command evaluates `SkillSearcher` directly, not the LLM agent. JSONL and JSON exports work without extra dependencies; parquet exports require `pandas` with a parquet engine such as `pyarrow`.
 
 ```toml
-[gatewaybench_compare]
-dataset = "path/to/gatewaybench.jsonl"
-limit = 50
-top_k = 5
-selectors = ["hybrid", "llm-baseline"]
-llm = "openai-compatible"
+[toolret]
+queries = "path/to/toolret_queries.jsonl"
+tools = "path/to/toolret_tools.jsonl"
+first_stage_candidates = ""
+limit = 30
+top_k = 10
+category = "all"
+use_instruction = true
+baseline = "hybrid"
+candidate_pool_size = 100
+rankgpt_window_size = 20
+rankgpt_step_size = 10
 ```
 
-`--skill-dir` is accepted either before or after the subcommand.
+To compare instruction-aware and query-only retrieval, run once with `--use-instruction` and once with `--no-instruction`.
+
+Run a ToolRet-style LLM agent reranking baseline:
+
+```powershell
+uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline rankgpt --llm openai-compatible --top-k 10 --candidate-pool-size 100
+```
+
+`--baseline rankgpt` implements a RankGPT-style zero-shot LLM reranker over first-stage candidates. To match the ToolRet paper most closely, pass first-stage candidates produced by NV-Embed-v1. If `--first-stage-candidates` is omitted, the command uses this repo's hybrid retriever as the first-stage fallback and reports token usage, latency, and parse failures for the LLM reranking calls.
 
 ## Tests
 
@@ -129,5 +145,5 @@ The project is in an early MVP state:
 - Milestone 3 is partial: search returns ranked skill cards from BM25/vector RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, learned dense retrieval, reranking, and search logs are not implemented.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
 - Milestone 5 now has an initial LLM-backed agent loop for search/read/final-answer workflows.
-- Milestone 6 now has selector-based GatewayBench comparison for LLM skill selection with hybrid `skill_search` versus an all-candidate LLM baseline.
+- Milestone 6 has retrieval and ToolRet benchmark adapters.
 - Milestone 7 is not implemented: optional skill invocation remains future work.

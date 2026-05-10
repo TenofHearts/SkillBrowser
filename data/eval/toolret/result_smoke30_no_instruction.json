@@ -1,0 +1,1787 @@
+{
+  "query_count": 30,
+  "top_k": 10,
+  "use_instruction": false,
+  "recall_at": {
+    "1": 0.1556,
+    "3": 0.2139,
+    "5": 0.2694,
+    "10": 0.3806
+  },
+  "precision_at_10": 0.06,
+  "mrr_at_10": 0.3203,
+  "ndcg_at_10": 0.2819,
+  "completeness_at_10": 0.2667,
+  "parse_failure_count": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "total_tokens": 0,
+  "total_latency_ms": 117525,
+  "avg_latency_ms": 3917.5,
+  "wall_time_ms": 117528,
+  "token_usage_sources": {
+    "none": 30
+  },
+  "by_category": {
+    "web": {
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 0.0333,
+      "recall@10": 0.0833,
+      "precision@10": 0.02,
+      "mrr@10": 0.035,
+      "ndcg@10": 0.0379,
+      "completeness@10": 0.0
+    },
+    "code": {
+      "recall@1": 0.2,
+      "recall@3": 0.3,
+      "recall@5": 0.4,
+      "recall@10": 0.6,
+      "precision@10": 0.06,
+      "mrr@10": 0.306,
+      "ndcg@10": 0.3751,
+      "completeness@10": 0.6
+    },
+    "customized": {
+      "recall@1": 0.2667,
+      "recall@3": 0.3417,
+      "recall@5": 0.375,
+      "recall@10": 0.4583,
+      "precision@10": 0.1,
+      "mrr@10": 0.62,
+      "ndcg@10": 0.4325,
+      "completeness@10": 0.2
+    }
+  },
+  "misses": [
+    {
+      "id": "apibank_query_0",
+      "query": "Can you tell me about the historical events of April 21st?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_33",
+        "toolret.apibank_tool_53"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolACE_tool_14425",
+        "toolret.toolbench_tool_2693",
+        "toolret.toolbench_tool_12487",
+        "toolret.toolbench_tool_11735",
+        "toolret.toolbench_tool_9137",
+        "toolret.toolLens_tool_55",
+        "toolret.toolACE_tool_4320",
+        "toolret.toolACE_tool_13948",
+        "toolret.toolbench_tool_2230",
+        "toolret.toolbench_tool_7961"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolACE_tool_14425": {
+          "lexical": 0.9843,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8239,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_2693": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6714,
+          "rrf": 0.8102,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_12487": {
+          "lexical": 0.8664,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.89,
+          "rrf": 0.8266,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.9227,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6448,
+          "rrf": 0.7055,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.85,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7917,
+          "rrf": 0.8338,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.8432,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7857,
+          "rrf": 0.8286,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_4320": {
+          "lexical": 0.9853,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.4869,
+          "rrf": 0.5568,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_13948": {
+          "lexical": 0.8201,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7217,
+          "rrf": 0.9501,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_2230": {
+          "lexical": 0.9626,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5041,
+          "rrf": 0.5522,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_7961": {
+          "lexical": 0.8649,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5448,
+          "rrf": 0.6515,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_1",
+      "query": "Can you tell me today's date?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_23"
+      ],
+      "returned_skill_ids": [
+        "toolret.rotbench_tool_384",
+        "toolret.rotbench_tool_656",
+        "toolret.rotbench_tool_355",
+        "toolret.rotbench_tool_372",
+        "toolret.rotbench_tool_636",
+        "toolret.rotbench_tool_894",
+        "toolret.rotbench_tool_905",
+        "toolret.rotbench_tool_650",
+        "toolret.rotbench_tool_913",
+        "toolret.toolbench_tool_8187"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.rotbench_tool_384": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 1.0,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_656": {
+          "lexical": 0.9585,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6511,
+          "rrf": 0.9522,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_355": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9913,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_372": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9761,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_636": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.956,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_894": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9196,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_905": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9065,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_650": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.9419,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.rotbench_tool_913": {
+          "lexical": 0.8278,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8097,
+          "rrf": 0.8938,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8187": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.4208,
+          "rrf": 0.6599,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_2",
+      "query": "Can you tell me the current date?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_23"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_9137",
+        "toolret.toolbench_tool_11735",
+        "toolret.toolLens_tool_55",
+        "toolret.toolbench_tool_1401",
+        "toolret.toolbench_tool_1215",
+        "toolret.toolbench_tool_8500",
+        "toolret.toolbench_tool_8499",
+        "toolret.toolbench_tool_4250",
+        "toolret.toolbench_tool_12487",
+        "toolret.toolbench_tool_3821"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.9045,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.9383,
+          "rrf": 0.9992,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.9818,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.7519,
+          "rrf": 0.9462,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.8972,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.9331,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1401": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.6,
+          "vector": 0.4344,
+          "rrf": 0.4931,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1215": {
+          "lexical": 0.8651,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7886,
+          "rrf": 0.9576,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8500": {
+          "lexical": 0.9209,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5564,
+          "rrf": 0.7872,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8499": {
+          "lexical": 0.9087,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5378,
+          "rrf": 0.6243,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_4250": {
+          "lexical": 0.9138,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.4182,
+          "rrf": 0.496,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_12487": {
+          "lexical": 0.6669,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9165,
+          "rrf": 0.8943,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_3821": {
+          "lexical": 0.8635,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5033,
+          "rrf": 0.572,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_3",
+      "query": "Can you help me register on this app?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_1"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_11735",
+        "toolret.toolbench_tool_2869",
+        "toolret.toolbench_tool_9137",
+        "toolret.toolLens_tool_55",
+        "toolret.toolbench_tool_12637",
+        "toolret.toolbench_tool_7375",
+        "toolret.toolACE_tool_4521",
+        "toolret.toolbench_tool_2868",
+        "toolret.metatool_which_tool_51",
+        "toolret.tool_be_honest_tool_381"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.9452,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6686,
+          "rrf": 0.6767,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_2869": {
+          "lexical": 0.8349,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8757,
+          "rrf": 0.9251,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.8708,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.821,
+          "rrf": 0.8856,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.8638,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8162,
+          "rrf": 0.882,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_12637": {
+          "lexical": 0.8565,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.8743,
+          "rrf": 0.9276,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_7375": {
+          "lexical": 0.9115,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6176,
+          "rrf": 0.6227,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_4521": {
+          "lexical": 0.8988,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.7049,
+          "rrf": 0.9064,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_2868": {
+          "lexical": 0.8124,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7236,
+          "rrf": 0.7156,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.metatool_which_tool_51": {
+          "lexical": 0.8214,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6851,
+          "rrf": 0.6941,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.tool_be_honest_tool_381": {
+          "lexical": 0.8324,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6493,
+          "rrf": 0.6543,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_4",
+      "query": "Can you delete my alarm at 7:00 a.m. on March 16th?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_0",
+        "toolret.apibank_tool_19",
+        "toolret.apibank_tool_13"
+      ],
+      "returned_skill_ids": [
+        "toolret.ultraTool_tool_547",
+        "toolret.toolbench_tool_1091",
+        "toolret.apibank_tool_18",
+        "toolret.ultraTool_tool_515",
+        "toolret.ultraTool_tool_584",
+        "toolret.apibank_tool_20",
+        "toolret.toolLens_tool_287",
+        "toolret.ultraTool_tool_546",
+        "toolret.toolbench_tool_5919",
+        "toolret.taskbench_daily_tool_39"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.ultraTool_tool_547": {
+          "lexical": 0.8995,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8745,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1091": {
+          "lexical": 0.7755,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5801,
+          "rrf": 0.5896,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apibank_tool_18": {
+          "lexical": 0.7892,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.6766,
+          "rrf": 0.7322,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_515": {
+          "lexical": 0.6065,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9253,
+          "rrf": 0.9524,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_584": {
+          "lexical": 0.6049,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9228,
+          "rrf": 0.9295,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apibank_tool_20": {
+          "lexical": 0.7787,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.6838,
+          "rrf": 0.7539,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_287": {
+          "lexical": 0.6962,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6491,
+          "rrf": 0.6929,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_546": {
+          "lexical": 0.611,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.8823,
+          "rrf": 0.897,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_5919": {
+          "lexical": 0.6962,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.624,
+          "rrf": 0.6521,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.taskbench_daily_tool_39": {
+          "lexical": 0.5878,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9039,
+          "rrf": 0.9075,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_5",
+      "query": "Can you show me my history for today?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_33"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_11735",
+        "toolret.toolbench_tool_9137",
+        "toolret.toolLens_tool_55",
+        "toolret.toolbench_tool_1091",
+        "toolret.toolbench_tool_12361",
+        "toolret.toolbench_tool_1092",
+        "toolret.toolbench_tool_9848",
+        "toolret.toolACE_tool_6564",
+        "toolret.toolbench_tool_4529",
+        "toolret.toolLens_tool_59"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.9968,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.7156,
+          "rrf": 0.7841,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.9183,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8854,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.9109,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8796,
+          "rrf": 0.9793,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1091": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6665,
+          "rrf": 0.7564,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_12361": {
+          "lexical": 0.9504,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6527,
+          "rrf": 0.7374,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1092": {
+          "lexical": 0.9364,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.637,
+          "rrf": 0.6847,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9848": {
+          "lexical": 0.948,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.6131,
+          "rrf": 0.6747,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_6564": {
+          "lexical": 0.9322,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6742,
+          "rrf": 0.9652,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_4529": {
+          "lexical": 0.9498,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5375,
+          "rrf": 0.5434,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_59": {
+          "lexical": 0.758,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6328,
+          "rrf": 0.66,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_7",
+      "query": "Can you tell me about the devices included in the Morning Routine scene?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_67"
+      ],
+      "returned_skill_ids": [
+        "toolret.apibank_tool_64",
+        "toolret.toolACE_tool_8780",
+        "toolret.webtools_spotify_tool_16",
+        "toolret.apibank_tool_66",
+        "toolret.toolbench_tool_12487",
+        "toolret.toolACE_tool_3121",
+        "toolret.toolbench_tool_11735",
+        "toolret.toolACE_tool_15162",
+        "toolret.toolbench_tool_9137",
+        "toolret.toolLens_tool_55"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.apibank_tool_64": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.9778,
+          "rrf": 0.9423,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_8780": {
+          "lexical": 0.7758,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.7194,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.webtools_spotify_tool_16": {
+          "lexical": 0.6972,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7558,
+          "rrf": 0.8871,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apibank_tool_66": {
+          "lexical": 0.6733,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5734,
+          "rrf": 0.743,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_12487": {
+          "lexical": 0.5383,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7337,
+          "rrf": 0.8205,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_3121": {
+          "lexical": 0.5062,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7145,
+          "rrf": 0.8122,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.5733,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5306,
+          "rrf": 0.6512,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_15162": {
+          "lexical": 0.6176,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5303,
+          "rrf": 0.8121,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.5281,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.652,
+          "rrf": 0.7759,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.5239,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6476,
+          "rrf": 0.7677,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "apibank_query_8",
+      "query": "Hi, can you please tell me my current balance?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_0",
+        "toolret.apibank_tool_32"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_1380",
+        "toolret.toolbench_tool_10339",
+        "toolret.toolbench_tool_11735",
+        "toolret.toolbench_tool_10118",
+        "toolret.toolbench_tool_1091",
+        "toolret.toolACE_tool_10675",
+        "toolret.toolbench_tool_9137",
+        "toolret.toolLens_tool_55",
+        "toolret.toolACE_tool_4505",
+        "toolret.ultraTool_tool_135"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_1380": {
+          "lexical": 0.9481,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.3841,
+          "rrf": 0.5801,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_10339": {
+          "lexical": 0.8755,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5684,
+          "rrf": 0.8828,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_11735": {
+          "lexical": 0.8475,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.4818,
+          "rrf": 0.748,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_10118": {
+          "lexical": 0.5693,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.98,
+          "rrf": 0.901,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_1091": {
+          "lexical": 0.8502,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.4556,
+          "rrf": 0.7004,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_10675": {
+          "lexical": 0.7299,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6784,
+          "rrf": 0.9338,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9137": {
+          "lexical": 0.7808,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6054,
+          "rrf": 0.9047,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolLens_tool_55": {
+          "lexical": 0.7745,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6022,
+          "rrf": 0.9071,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_4505": {
+          "lexical": 0.739,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6278,
+          "rrf": 0.8723,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_135": {
+          "lexical": 0.7496,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5889,
+          "rrf": 0.895,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "craft_Math_algebra_query_1",
+      "query": "Evaluate $\\log_2 (4^2)$.",
+      "category": "code",
+      "expected_skill_ids": [
+        "toolret.craft_Math_algebra_tool_1"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolACE_tool_11694",
+        "toolret.tool_be_honest_tool_239",
+        "toolret.toolACE_tool_10921",
+        "toolret.toolACE_tool_15748",
+        "toolret.toolink_tool_1310",
+        "toolret.toolbench_tool_9256",
+        "toolret.toolACE_tool_15966",
+        "toolret.toolACE_tool_3302",
+        "toolret.toolACE_tool_4970",
+        "toolret.toolACE_tool_12887"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolACE_tool_11694": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.6521,
+          "rrf": 0.8873,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.tool_be_honest_tool_239": {
+          "lexical": 0.6531,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9728,
+          "rrf": 0.9969,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_10921": {
+          "lexical": 0.8089,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.7343,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_15748": {
+          "lexical": 0.9135,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.5198,
+          "rrf": 0.7137,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1310": {
+          "lexical": 0.6101,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8149,
+          "rrf": 0.8809,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_9256": {
+          "lexical": 0.7257,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.7232,
+          "rrf": 0.8936,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_15966": {
+          "lexical": 0.8193,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.5861,
+          "rrf": 0.8579,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_3302": {
+          "lexical": 0.8784,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.4967,
+          "rrf": 0.6775,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_4970": {
+          "lexical": 0.6128,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.8462,
+          "rrf": 0.9446,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_12887": {
+          "lexical": 0.737,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.542,
+          "rrf": 0.7742,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "craft_Math_algebra_query_4",
+      "query": "All triangles have the same value, and all circles have the same value. What is the sum of three circles? \\begin{align*}\n\\Delta + \\bigcirc + \\Delta + \\bigcirc + \\Delta&= 21\\\\\n\\bigcirc + \\Delta+\\bigcirc+\\Delta+\\bigcirc &= 19\\\\\n\\bigcirc + \\bigcirc + \\bigcirc &= \\ ?\n\\end{align*}",
+      "category": "code",
+      "expected_skill_ids": [
+        "toolret.craft_Math_algebra_tool_4"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolink_tool_936",
+        "toolret.toolink_tool_623",
+        "toolret.toolink_tool_1282",
+        "toolret.toolink_tool_594",
+        "toolret.toolink_tool_1773",
+        "toolret.toolACE_tool_6707",
+        "toolret.toolink_tool_1466",
+        "toolret.toolink_tool_347",
+        "toolret.toolink_tool_918",
+        "toolret.toolink_tool_1393"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolink_tool_936": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7356,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_623": {
+          "lexical": 0.8761,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.3957,
+          "rrf": 0.8242,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1282": {
+          "lexical": 0.6673,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.7372,
+          "rrf": 0.9467,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_594": {
+          "lexical": 0.8433,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.3503,
+          "rrf": 0.7275,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1773": {
+          "lexical": 0.778,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.3752,
+          "rrf": 0.7663,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_6707": {
+          "lexical": 0.5657,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.8016,
+          "rrf": 0.9096,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1466": {
+          "lexical": 0.7678,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.363,
+          "rrf": 0.7485,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_347": {
+          "lexical": 0.7678,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.363,
+          "rrf": 0.7578,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_918": {
+          "lexical": 0.7634,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.347,
+          "rrf": 0.7031,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1393": {
+          "lexical": 0.7634,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.347,
+          "rrf": 0.6951,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "craft_Math_algebra_query_7",
+      "query": "The graph of the equation $x + 2y + 3 = 0$ is perpendicular to the graph of the equation $ax + 2y + 3 = 0$. What is the value of $a$?",
+      "category": "code",
+      "expected_skill_ids": [
+        "toolret.craft_Math_algebra_tool_7"
+      ],
+      "returned_skill_ids": [
+        "toolret.craft_Math_algebra_tool_90",
+        "toolret.toolink_tool_1140",
+        "toolret.toolink_tool_255",
+        "toolret.toolink_tool_1083",
+        "toolret.craft_Math_algebra_tool_71",
+        "toolret.toolink_tool_1084",
+        "toolret.toolink_tool_311",
+        "toolret.craft_Math_algebra_tool_100",
+        "toolret.toolACE_tool_13225",
+        "toolret.toolink_tool_436"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.craft_Math_algebra_tool_90": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.7848,
+          "rrf": 0.9277,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1140": {
+          "lexical": 0.8429,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.9455,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_255": {
+          "lexical": 0.8152,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.845,
+          "rrf": 0.9269,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1083": {
+          "lexical": 0.8214,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8888,
+          "rrf": 0.9733,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.craft_Math_algebra_tool_71": {
+          "lexical": 0.9524,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.639,
+          "rrf": 0.8047,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1084": {
+          "lexical": 0.8214,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8774,
+          "rrf": 0.9601,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_311": {
+          "lexical": 0.8162,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8304,
+          "rrf": 0.9208,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.craft_Math_algebra_tool_100": {
+          "lexical": 0.914,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.5136,
+          "rrf": 0.6149,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_13225": {
+          "lexical": 0.8808,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5944,
+          "rrf": 0.9735,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_436": {
+          "lexical": 0.678,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.8094,
+          "rrf": 0.8877,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "craft_Math_algebra_query_8",
+      "query": "Each of the ten volumes of the collected works of Theodore Sturgeon is available in paperback for $\\$$15 or in hardcover for $\\$$25. Theresa buys a copy of each of the ten volumes for a total of $\\$$220. How many hardcover volumes did she buy?",
+      "category": "code",
+      "expected_skill_ids": [
+        "toolret.craft_Math_algebra_tool_8"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_721",
+        "toolret.toolACE_tool_7332",
+        "toolret.toolbench_tool_67",
+        "toolret.toolACE_tool_11012",
+        "toolret.toolbench_tool_2722",
+        "toolret.toolink_tool_1477",
+        "toolret.toolink_tool_593",
+        "toolret.toolACE_tool_11915",
+        "toolret.reversechain_tool_14",
+        "toolret.toolalpaca_tool_34"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_721": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.5553,
+          "rrf": 0.9215,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_7332": {
+          "lexical": 0.4832,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.9645,
+          "rrf": 0.8924,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_67": {
+          "lexical": 0.8037,
+          "capability": 1.0,
+          "usage": 0.48,
+          "vector": 0.3123,
+          "rrf": 0.6151,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_11012": {
+          "lexical": 0.5021,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.8376,
+          "rrf": 0.8924,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_2722": {
+          "lexical": 0.7369,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.4275,
+          "rrf": 0.8108,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1477": {
+          "lexical": 0.7211,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.3753,
+          "rrf": 0.7092,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_593": {
+          "lexical": 0.719,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.4257,
+          "rrf": 0.7952,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_11915": {
+          "lexical": 0.6578,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5008,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.reversechain_tool_14": {
+          "lexical": 0.7381,
+          "capability": 1.0,
+          "usage": 0.12,
+          "vector": 0.4483,
+          "rrf": 0.8264,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolalpaca_tool_34": {
+          "lexical": 0.6398,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5085,
+          "rrf": 0.85,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "appbench_query_3",
+      "query": "Book one IMAX ticket for IT Chapter Two at Century Blackhawk Plaza in Danville for the show on March 3rd at 10:30 pm.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_13",
+        "toolret.appbench_tool_15"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolACE_tool_5532",
+        "toolret.reversechain_tool_183",
+        "toolret.apigen_tool_385",
+        "toolret.toolACE_tool_10153",
+        "toolret.apigen_tool_3470",
+        "toolret.toolbench_tool_182",
+        "toolret.toolbench_tool_186",
+        "toolret.toolbench_tool_155",
+        "toolret.toolACE_tool_594",
+        "toolret.toolACE_tool_11246"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolACE_tool_5532": {
+          "lexical": 0.7468,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.9142,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.reversechain_tool_183": {
+          "lexical": 0.8396,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7731,
+          "rrf": 0.7803,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apigen_tool_385": {
+          "lexical": 0.7333,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.8711,
+          "rrf": 0.9775,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_10153": {
+          "lexical": 0.7378,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.805,
+          "rrf": 0.9688,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.apigen_tool_3470": {
+          "lexical": 0.7309,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7463,
+          "rrf": 0.9204,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_182": {
+          "lexical": 0.7014,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7851,
+          "rrf": 0.7656,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_186": {
+          "lexical": 0.7014,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7821,
+          "rrf": 0.7471,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_155": {
+          "lexical": 0.8196,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5222,
+          "rrf": 0.5379,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_594": {
+          "lexical": 0.7137,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.7074,
+          "rrf": 0.8746,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_11246": {
+          "lexical": 0.7136,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6996,
+          "rrf": 0.8742,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    },
+    {
+      "id": "appbench_query_4",
+      "query": "Find me a round trip flight from Las Vegas to Los Angeles departing on March 4th and returning on March 10th.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_10",
+        "toolret.appbench_tool_15"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolbench_tool_1276",
+        "toolret.mnms_tool_16",
+        "toolret.ultraTool_tool_610",
+        "toolret.toolbench_tool_8588",
+        "toolret.toolink_tool_1015",
+        "toolret.toolbench_tool_13769",
+        "toolret.toolbench_tool_11390",
+        "toolret.toolACE_tool_15619",
+        "toolret.craft_Math_algebra_tool_155",
+        "toolret.ultraTool_tool_692"
+      ],
+      "parse_error": null,
+      "score_breakdowns": {
+        "toolret.toolbench_tool_1276": {
+          "lexical": 0.9835,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.9234,
+          "rrf": 0.999,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.mnms_tool_16": {
+          "lexical": 0.8949,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 1.0,
+          "rrf": 1.0,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_610": {
+          "lexical": 0.9474,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5182,
+          "rrf": 0.9179,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_8588": {
+          "lexical": 1.0,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.4955,
+          "rrf": 0.9062,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolink_tool_1015": {
+          "lexical": 0.8626,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.6618,
+          "rrf": 0.9656,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_13769": {
+          "lexical": 0.9384,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.4505,
+          "rrf": 0.8424,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolbench_tool_11390": {
+          "lexical": 0.8248,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.5617,
+          "rrf": 0.8544,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.toolACE_tool_15619": {
+          "lexical": 0.8999,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.4077,
+          "rrf": 0.9048,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.craft_Math_algebra_tool_155": {
+          "lexical": 0.8127,
+          "capability": 1.0,
+          "usage": 0.36,
+          "vector": 0.3451,
+          "rrf": 0.7005,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        },
+        "toolret.ultraTool_tool_692": {
+          "lexical": 0.7123,
+          "capability": 1.0,
+          "usage": 0.24,
+          "vector": 0.5407,
+          "rrf": 0.9015,
+          "input_type": 0.0,
+          "output_type": 0.0,
+          "contraindication_penalty": 0.0
+        }
+      }
+    }
+  ]
+}

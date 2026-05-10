@@ -14,14 +14,15 @@ dev = [
 ]
 
 [project.scripts]
-skill-agent = "skill_search_agent.cli:main"
+skill-agent = "cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/skill_search_agent"]
+include = ["src"]
+sources = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

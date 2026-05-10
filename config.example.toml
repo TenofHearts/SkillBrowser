@@ -12,10 +12,19 @@ top_k = 5
 max_steps = 5
 read_max_tokens = 2000
 
-[gatewaybench_compare]
-dataset = "tests/fixtures/gatewaybench_lite.jsonl"
-limit = 50
-top_k = 5
-selectors = ["hybrid", "llm-baseline"]
+[toolret]
+queries = "tests/fixtures/toolret_queries.jsonl"
+tools = "tests/fixtures/toolret_tools.jsonl"
+first_stage_candidates = ""
+subset = ""
+category = "all"
+limit = 30
+top_k = 10
+use_instruction = true
+baseline = "hybrid"
 llm = "mock"
-workers = 10
+candidate_pool_size = 100
+rankgpt_window_size = 20
+rankgpt_step_size = 10
+workers = 1
+output = ""
