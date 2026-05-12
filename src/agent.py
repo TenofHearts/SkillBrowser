@@ -1,3 +1,5 @@
+"""LLM-driven skill selection agent that searches, reads, and answers with relevant skills."""
+
 from __future__ import annotations
 
 import json

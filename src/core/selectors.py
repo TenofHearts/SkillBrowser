@@ -1,3 +1,5 @@
+"""Tool selection strategies and JSON parsers for retrieval-augmented LLM ranking."""
+
 from __future__ import annotations
 
 import json

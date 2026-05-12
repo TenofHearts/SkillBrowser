@@ -1,3 +1,5 @@
+"""Markdown section parsing and simple token counting utilities."""
+
 from __future__ import annotations
 
 import re

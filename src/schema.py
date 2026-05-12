@@ -1,3 +1,5 @@
+"""Pydantic models for skill specs, search requests, agent runs, and benchmark data."""
+
 from __future__ import annotations
 
 from enum import Enum

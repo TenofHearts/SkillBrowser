@@ -1,3 +1,5 @@
+"""Read full skill documents or named markdown sections with token-aware truncation."""
+
 from __future__ import annotations
 
 from core.sections import normalize_section_name, parse_markdown_sections, token_count, truncate_tokens

@@ -1,3 +1,5 @@
+"""ToolRet dataset adapters, candidate generation, and retrieval/reranking evaluations."""
+
 from __future__ import annotations
 
 import json
@@ -53,10 +55,40 @@ class ToolRetEvalResult(BaseModel):
     misses: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ToolRetComparisonResult(BaseModel):
+    query_count: int
+    top_k: int
+    use_instruction: bool
+    first_stage: str
+    document_representation: str
+    hybrid: ToolRetEvalResult
+    llm: ToolRetEvalResult
+    delta_llm_minus_hybrid: dict[str, float]
+
+
 class ToolRetCandidateDoc(BaseModel):
     id: str
     name: str
     documentation: str
+
+
+class ToolRetCandidateBuildResult(BaseModel):
+    query_count: int
+    tool_count: int
+    top_k: int
+    model: str
+    use_instruction: bool
+    output: str
+
+
+class TextEmbedder:
+    model_name: str
+
+    def embed_queries(self, examples: list[ToolRetQueryExample], *, use_instruction: bool) -> Any:
+        raise NotImplementedError
+
+    def embed_passages(self, passages: list[str]) -> Any:
+        raise NotImplementedError
 
 
 def load_toolret_tools(path: str | Path) -> list[SkillSpec]:
@@ -109,6 +141,119 @@ def load_toolret_first_stage_candidates(path: str | Path) -> dict[str, list[str]
     if not candidates:
         raise ValueError(f"No ToolRet first-stage candidates found in {path}")
     return candidates
+
+
+def write_toolret_first_stage_candidates(
+    output_path: str | Path,
+    candidates: dict[str, list[dict[str, Any]]],
+) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps({"id": query_id, "tools": tools}, ensure_ascii=False)
+        for query_id, tools in candidates.items()
+    ]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def build_toolret_first_stage_candidates(
+    skills: list[SkillSpec],
+    examples: list[ToolRetQueryExample],
+    embedder: TextEmbedder,
+    *,
+    top_k: int,
+    use_instruction: bool = True,
+    output_path: str | Path,
+) -> ToolRetCandidateBuildResult:
+    if top_k <= 0:
+        raise ValueError("Candidate top_k must be positive")
+    candidate_docs = [_toolret_candidate_doc(skill) for skill in skills]
+    passage_embeddings = embedder.embed_passages([doc.documentation for doc in candidate_docs])
+    query_embeddings = embedder.embed_queries(examples, use_instruction=use_instruction)
+    score_rows = _top_k_embedding_scores(query_embeddings, passage_embeddings, top_k)
+    output: dict[str, list[dict[str, Any]]] = {}
+    for example, ranked in zip(examples, score_rows):
+        output[example.id] = [
+            {"id": candidate_docs[index].id, "score": round(float(score), 6)}
+            for index, score in ranked
+        ]
+    write_toolret_first_stage_candidates(output_path, output)
+    return ToolRetCandidateBuildResult(
+        query_count=len(examples),
+        tool_count=len(skills),
+        top_k=top_k,
+        model=embedder.model_name,
+        use_instruction=use_instruction,
+        output=str(output_path),
+    )
+
+
+class NVEmbedV1Embedder(TextEmbedder):
+    def __init__(
+        self,
+        *,
+        model_name: str = "nvidia/NV-Embed-v1",
+        batch_size: int = 8,
+        max_length: int = 4096,
+        device: str | None = None,
+    ):
+        self.model_name = model_name
+        self.batch_size = batch_size
+        self.max_length = max_length
+        try:
+            import torch  # type: ignore[import-not-found]
+            import torch.nn.functional as torch_functional  # type: ignore[import-not-found]
+            from transformers import AutoModel  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise ValueError(
+                "NV-Embed-v1 candidate generation requires optional packages: torch and transformers. "
+                "Install them in this environment before running build-toolret-candidates."
+            ) from exc
+        self._torch = torch
+        self._torch_functional = torch_functional
+        try:
+            self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not load {model_name}. NV-Embed-v1 is gated on Hugging Face, so you may need "
+                "to accept the model terms and authenticate with a Hugging Face token, e.g. `uv run hf auth login`."
+            ) from exc
+        if device:
+            self.model.to(device)
+        self.model.eval()
+
+    def embed_queries(self, examples: list[ToolRetQueryExample], *, use_instruction: bool) -> Any:
+        embeddings = []
+        for example in examples:
+            instruction = _nv_embed_instruction(example, use_instruction)
+            prefix = f"Instruct: {instruction}\nQuery: "
+            embedding = self._encode([example.query], instruction=prefix)
+            embeddings.append(embedding[0])
+        return self._torch.stack(embeddings, dim=0) if embeddings else self._empty_embedding()
+
+    def embed_passages(self, passages: list[str]) -> Any:
+        return self._encode(passages, instruction="")
+
+    def _encode(self, texts: list[str], *, instruction: str) -> Any:
+        if not texts:
+            return self._empty_embedding()
+        with self._torch.no_grad():
+            if hasattr(self.model, "_do_encode"):
+                embeddings = self.model._do_encode(
+                    texts,
+                    batch_size=self.batch_size,
+                    instruction=instruction,
+                    max_length=self.max_length,
+                    return_numpy=False,
+                )
+            else:
+                embeddings = self.model.encode(texts, instruction=instruction, max_length=self.max_length)
+            if not self._torch.is_tensor(embeddings):
+                embeddings = self._torch.as_tensor(embeddings)
+            return self._torch_functional.normalize(embeddings.float(), p=2, dim=1).cpu()
+
+    def _empty_embedding(self) -> Any:
+        return self._torch.empty((0, 0))
 
 
 def toolret_tool_to_skill(row: dict[str, Any]) -> SkillSpec:
@@ -254,6 +399,92 @@ def evaluate_toolret_llm_rerank(
             step_size,
         ),
         workers=workers,
+    )
+
+
+def evaluate_toolret_paper_llm_baseline(
+    skills: list[SkillSpec],
+    examples: list[ToolRetQueryExample],
+    llm: LLMClient,
+    *,
+    top_k: int = 10,
+    use_instruction: bool = True,
+    candidate_pool_size: int = 100,
+    first_stage_candidates: dict[str, list[str]],
+    window_size: int = 20,
+    step_size: int = 10,
+    workers: int = 1,
+) -> ToolRetEvalResult:
+    """Evaluate the ToolRet paper's LLM-agent baseline.
+
+    The paper evaluates RankGPT-style zero-shot LLM reranking over tools first
+    retrieved by NV-Embed-v1. This function deliberately has no hybrid fallback,
+    so callers cannot accidentally compare a different first-stage pipeline.
+    """
+    pool_size = max(candidate_pool_size, top_k)
+    skill_by_id = {skill.id: skill for skill in skills}
+    return _evaluate_toolret(
+        examples,
+        top_k=top_k,
+        use_instruction=use_instruction,
+        runner=lambda example: _run_rankgpt_toolret(
+            None,
+            skill_by_id,
+            llm,
+            example,
+            top_k,
+            use_instruction,
+            pool_size,
+            first_stage_candidates,
+            window_size,
+            step_size,
+        ),
+        workers=workers,
+    )
+
+
+def compare_toolret_hybrid_with_paper_llm(
+    searcher: SkillSearcher,
+    skills: list[SkillSpec],
+    examples: list[ToolRetQueryExample],
+    llm: LLMClient,
+    *,
+    top_k: int = 10,
+    use_instruction: bool = True,
+    candidate_pool_size: int = 100,
+    first_stage_candidates: dict[str, list[str]],
+    window_size: int = 20,
+    step_size: int = 10,
+    workers: int = 1,
+) -> ToolRetComparisonResult:
+    hybrid = evaluate_toolret_retrieval(
+        searcher,
+        examples,
+        top_k=top_k,
+        use_instruction=use_instruction,
+        workers=workers,
+    )
+    llm_result = evaluate_toolret_paper_llm_baseline(
+        skills,
+        examples,
+        llm,
+        top_k=top_k,
+        use_instruction=use_instruction,
+        candidate_pool_size=candidate_pool_size,
+        first_stage_candidates=first_stage_candidates,
+        window_size=window_size,
+        step_size=step_size,
+        workers=workers,
+    )
+    return ToolRetComparisonResult(
+        query_count=len(examples),
+        top_k=top_k,
+        use_instruction=use_instruction,
+        first_stage="provided candidates, expected to be NV-Embed-v1 for paper-faithful ToolRet comparisons",
+        document_representation="SkillSpec-derived ToolRet candidate documents",
+        hybrid=hybrid,
+        llm=llm_result,
+        delta_llm_minus_hybrid=_toolret_metric_delta(llm_result, hybrid),
     )
 
 
@@ -403,7 +634,7 @@ def _run_hybrid_toolret(
 
 
 def _run_rankgpt_toolret(
-    searcher: SkillSearcher,
+    searcher: SkillSearcher | None,
     skill_by_id: dict[str, SkillSpec],
     llm: LLMClient,
     example: ToolRetQueryExample,
@@ -423,6 +654,8 @@ def _run_rankgpt_toolret(
         score_breakdowns = {}
         first_stage_source = "provided"
     else:
+        if searcher is None:
+            raise ValueError("ToolRet paper LLM baseline requires first-stage candidates from NV-Embed-v1")
         request_top_k = min(candidate_pool_size, 50)
         request = toolret_query_to_search_request(example, top_k=request_top_k, use_instruction=use_instruction)
         search_response = searcher.search(request)
@@ -453,6 +686,19 @@ def _run_rankgpt_toolret(
         "token_usage_source": stats["token_usage_source"],
         "score_breakdowns": score_breakdowns,
         "first_stage_source": first_stage_source,
+    }
+
+
+def _toolret_metric_delta(llm_result: ToolRetEvalResult, hybrid: ToolRetEvalResult) -> dict[str, float]:
+    return {
+        "recall@1": round(llm_result.recall_at["1"] - hybrid.recall_at["1"], 4),
+        "recall@3": round(llm_result.recall_at["3"] - hybrid.recall_at["3"], 4),
+        "recall@5": round(llm_result.recall_at["5"] - hybrid.recall_at["5"], 4),
+        "recall@10": round(llm_result.recall_at["10"] - hybrid.recall_at["10"], 4),
+        "precision@10": round(llm_result.precision_at_10 - hybrid.precision_at_10, 4),
+        "mrr@10": round(llm_result.mrr_at_10 - hybrid.mrr_at_10, 4),
+        "ndcg@10": round(llm_result.ndcg_at_10 - hybrid.ndcg_at_10, 4),
+        "completeness@10": round(llm_result.completeness_at_10 - hybrid.completeness_at_10, 4),
     }
 
 
@@ -592,6 +838,49 @@ def _toolret_candidate_doc(skill: SkillSpec) -> ToolRetCandidateDoc:
         name=skill.name,
         documentation=json.dumps(documentation, ensure_ascii=False, sort_keys=True),
     )
+
+
+def _top_k_embedding_scores(query_embeddings: Any, passage_embeddings: Any, top_k: int) -> list[list[tuple[int, float]]]:
+    if hasattr(query_embeddings, "matmul") and hasattr(passage_embeddings, "T"):
+        k = min(top_k, int(passage_embeddings.shape[0]))
+        rows: list[list[tuple[int, float]]] = []
+        for query_embedding in query_embeddings:
+            scores = query_embedding.matmul(passage_embeddings.T)
+            values, indexes = scores.topk(k)
+            rows.append(
+                [
+                    (int(index), float(value))
+                    for index, value in zip(indexes.tolist(), values.tolist())
+                ]
+            )
+        return rows
+
+    query_rows = _embedding_rows(query_embeddings)
+    passage_rows = _embedding_rows(passage_embeddings)
+    rows = []
+    for query_row in query_rows:
+        scored = [
+            (index, _dot_product(query_row, passage_row))
+            for index, passage_row in enumerate(passage_rows)
+        ]
+        rows.append(sorted(scored, key=lambda item: item[1], reverse=True)[:top_k])
+    return rows
+
+
+def _embedding_rows(value: Any) -> list[list[float]]:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    return [[float(item) for item in row] for row in value]
+
+
+def _dot_product(left: list[float], right: list[float]) -> float:
+    return sum(left_value * right_value for left_value, right_value in zip(left, right))
+
+
+def _nv_embed_instruction(example: ToolRetQueryExample, use_instruction: bool) -> str:
+    if use_instruction and example.instruction:
+        return example.instruction
+    return "Given a user query, retrieve the most useful tool documentation for solving the query"
 
 
 def _candidate_mapping_from_dict(data: dict[str, Any]) -> dict[str, list[str]]:

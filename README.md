@@ -122,13 +122,29 @@ rankgpt_step_size = 10
 
 To compare instruction-aware and query-only retrieval, run once with `--use-instruction` and once with `--no-instruction`.
 
-Run a ToolRet-style LLM agent reranking baseline:
+Run the ToolRet paper's LLM agent reranking baseline:
 
 ```powershell
-uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline rankgpt --llm openai-compatible --top-k 10 --candidate-pool-size 100
+uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline toolret-rankgpt --llm openai-compatible --top-k 10 --candidate-pool-size 100
 ```
 
-`--baseline rankgpt` implements a RankGPT-style zero-shot LLM reranker over first-stage candidates. To match the ToolRet paper most closely, pass first-stage candidates produced by NV-Embed-v1. If `--first-stage-candidates` is omitted, the command uses this repo's hybrid retriever as the first-stage fallback and reports token usage, latency, and parse failures for the LLM reranking calls.
+`--baseline toolret-rankgpt` implements the ToolRet paper's RankGPT-style zero-shot LLM reranker over first-stage candidates produced by NV-Embed-v1. It requires `--first-stage-candidates` and intentionally does not fall back to this repo's hybrid retriever. The older `--baseline rankgpt` / `--baseline llm-rerank` modes remain available as local approximations; if their first-stage candidates are omitted, they use the hybrid retriever as a fallback and report token usage, latency, and parse failures.
+
+Compare the paper-style LLM pipeline against the SkillSpec hybrid searcher in one run:
+
+```powershell
+uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline compare --llm openai-compatible --top-k 10 --candidate-pool-size 100
+```
+
+This comparison uses `SkillSpec`-derived tool documents for both sides. The hybrid side uses `SkillSearcher`; the LLM side uses the provided first-stage candidates followed by RankGPT-style reranking with the configured LLM.
+
+Build those NV-Embed-v1 first-stage candidates from the same `SkillSpec` representation:
+
+```powershell
+uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --output path/to/nv_embed_candidates.jsonl --top-k 100 --model nvidia/NV-Embed-v1
+```
+
+This command loads `nvidia/NV-Embed-v1` locally with Hugging Face Transformers and `trust_remote_code=True`, embeds queries and `SkillSpec`-derived tool documents, and writes candidate JSONL that can be passed to `--first-stage-candidates`. NV-Embed-v1 is a gated 7B model, so the local environment must have `torch`, `transformers`, and the Hugging Face model terms accepted/authenticated before this command can run. Authenticate with `uv run hf auth login` after accepting access to the model on Hugging Face. Model files are cached under `~/.cache/huggingface/hub/`, and remote model code is cached under `~/.cache/huggingface/modules/transformers_modules/`.
 
 ## Tests
 

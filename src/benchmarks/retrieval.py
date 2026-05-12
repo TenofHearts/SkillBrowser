@@ -1,3 +1,5 @@
+"""Dataset loading and metric calculation for local skill retrieval benchmarks."""
+
 from __future__ import annotations
 
 import json

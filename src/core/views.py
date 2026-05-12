@@ -1,3 +1,5 @@
+"""Build searchable text views from skill metadata and markdown content."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

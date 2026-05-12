@@ -1,3 +1,5 @@
+"""LLM client abstractions, mock completions, OpenAI-compatible calls, and token estimates."""
+
 from __future__ import annotations
 
 import json

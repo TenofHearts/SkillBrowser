@@ -1,3 +1,5 @@
+"""SQLite registry construction and summary helpers for local skill indexes."""
+
 from __future__ import annotations
 
 import json

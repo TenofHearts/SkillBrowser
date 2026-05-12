@@ -1,3 +1,5 @@
+"""Hybrid lexical and view-based retrieval for ranking skill specifications."""
+
 from __future__ import annotations
 
 import math

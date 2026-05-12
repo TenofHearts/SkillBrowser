@@ -1,3 +1,5 @@
+"""Load and validate skill specifications and their markdown documents from disk."""
+
 from __future__ import annotations
 
 from pathlib import Path

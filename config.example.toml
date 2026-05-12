@@ -21,6 +21,9 @@ category = "all"
 limit = 30
 top_k = 10
 use_instruction = true
+# Use "hybrid" for this repo's searcher, "toolret-rankgpt" for the ToolRet paper
+# LLM baseline over NV-Embed-v1 first-stage candidates, or "rankgpt" for the
+# older local approximation that can fall back to the hybrid searcher.
 baseline = "hybrid"
 llm = "mock"
 candidate_pool_size = 100
