@@ -130,11 +130,17 @@ class SkillSpec(BaseModel):
 
 class SkillSearchRequest(BaseModel):
     query: str
-    top_k: int = Field(default=5, ge=1, le=50)
     task_context: Optional[str] = None
     required_capabilities: list[str] = Field(default_factory=list)
+    desired_capabilities: list[str] = Field(default_factory=list)
     input_types: list[str] = Field(default_factory=list)
     output_types: list[str] = Field(default_factory=list)
+    positive_signals: list[str] = Field(default_factory=list)
+    negative_signals: list[str] = Field(default_factory=list)
+    constraints: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
 
 
 class ScoreBreakdown(BaseModel):
@@ -143,11 +149,18 @@ class ScoreBreakdown(BaseModel):
     usage: float
     sparse_view: float = 0.0
     dense: float = 0.0
+    dense_description: float = 0.0
+    dense_capability: float = 0.0
+    dense_usage: float = 0.0
+    dense_schema: float = 0.0
+    dense_section: float = 0.0
     vector: float = 0.0
     rrf: float = 0.0
     input_type: float = 0.0
     output_type: float = 0.0
     contraindication_penalty: float = 0.0
+    negative_signal_penalty: float = 0.0
+    hard_mismatch_penalty: float = 0.0
 
 
 class SkillCard(BaseModel):
@@ -163,6 +176,9 @@ class SkillCard(BaseModel):
     read_recommendation: str
     score_breakdown: ScoreBreakdown
     usage_constraints: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
+    negative_matches: list[str] = Field(default_factory=list)
+    hard_mismatches: list[str] = Field(default_factory=list)
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
 
@@ -170,6 +186,8 @@ class SkillCard(BaseModel):
 class SkillSearchResponse(BaseModel):
     query: str
     results: list[SkillCard]
+    abstained: bool = False
+    abstention_reason: Optional[str] = None
 
 
 class SkillReadRequest(BaseModel):

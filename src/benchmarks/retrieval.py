@@ -19,14 +19,8 @@ class RetrievalExample(BaseModel):
     relevance_by_id: Optional[dict[str, str]] = None
     allow_no_result: bool = False
 
-    @root_validator(pre=True)
-    def normalize_legacy_expected_skill_id(cls, values: dict[str, Any]) -> dict[str, Any]:
-        if "expected_skill_id" in values and "expected_skill_ids" not in values:
-            values["expected_skill_ids"] = [values.pop("expected_skill_id")]
-        return values
-
     @root_validator(skip_on_failure=True)
-    def validate_expected_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def validate_expected_ids(cls, values: dict[str, object]) -> dict[str, object]:
         expected_skill_ids = values.get("expected_skill_ids") or []
         allow_no_result = values.get("allow_no_result")
         if not expected_skill_ids and not allow_no_result:
@@ -74,7 +68,7 @@ def evaluate_retrieval(
     misses: list[dict[str, Any]] = []
 
     for example in examples:
-        response = searcher.search(SkillSearchRequest(query=example.query, top_k=top_k))
+        response = searcher.search(SkillSearchRequest(query=example.query), top_k=top_k)
         ranked_ids = [card.id for card in response.results]
 
         stats = score_retrieval_result(example, ranked_ids, top_k)

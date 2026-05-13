@@ -91,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_toolret.set_defaults(use_instruction=None)
     eval_toolret.add_argument(
         "--baseline",
-        choices=["hybrid", "rankgpt", "llm-rerank", "toolret-rankgpt", "paper-rankgpt", "compare"],
+        choices=["hybrid", "hybrid-agent", "toolret-rankgpt", "compare"],
     )
     eval_toolret.add_argument("--candidate-pool-size", type=int)
     eval_toolret.add_argument("--rankgpt-window-size", type=int)
@@ -99,6 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
     eval_toolret.add_argument("--workers", type=int)
     eval_toolret.add_argument("--llm", choices=["mock", "openai-compatible"])
     eval_toolret.add_argument("--output", help="Optional path to write JSON result")
+    eval_toolret.add_argument("--checkpoint", help="Optional JSONL checkpoint path for per-query results")
+    eval_toolret.add_argument("--resume", action="store_true", help="Resume completed query results from --checkpoint")
+    eval_toolret.add_argument("--max-runtime-seconds", type=float, help="Stop scheduling new work after this many seconds")
     eval_toolret.add_argument(
         "--config",
         default="config.toml",
@@ -157,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             print(dump_json_summary({"ok": True, "db_path": str(db_path), **summary}))
             return 0
         if args.command == "search":
-            print_json(build_searcher(skills, args).search(SkillSearchRequest(query=args.query, top_k=args.top_k)))
+            print_json(build_searcher(skills, args).search(SkillSearchRequest(query=args.query), top_k=args.top_k))
             return 0
         if args.command == "run-agent":
             config = load_app_config_if_exists(args.config)
@@ -270,7 +273,7 @@ def build_searcher(skills, args: argparse.Namespace) -> SkillSearcher:
         bm25_enabled=bm25_enabled,
         sparse_view_enabled=sparse_view_enabled,
         weights=build_search_weights(args),
-        dense_cache_dir=getattr(args, "embedding_cache_dir", None),
+        dense_cache_dir=getattr(args, "embedding_cache_dir", None) or embedding_config.cache_dir,
     )
 
 
@@ -306,34 +309,38 @@ def should_persist_embeddings(args: argparse.Namespace) -> bool:
 
 
 def build_search_weights(args: argparse.Namespace) -> SearchWeights:
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    search_config = config.search
     defaults = SearchWeights()
     return SearchWeights(
-        lexical=getattr(args, "weight_lexical", None) if getattr(args, "weight_lexical", None) is not None else defaults.lexical,
+        lexical=_configured_weight(args, search_config, "weight_lexical", defaults.lexical),
         sparse_view=(
-            getattr(args, "weight_sparse_view", None)
-            if getattr(args, "weight_sparse_view", None) is not None
-            else defaults.sparse_view
+            _configured_weight(args, search_config, "weight_sparse_view", defaults.sparse_view)
         ),
-        dense=getattr(args, "weight_dense", None) if getattr(args, "weight_dense", None) is not None else defaults.dense,
-        rrf=getattr(args, "weight_rrf", None) if getattr(args, "weight_rrf", None) is not None else defaults.rrf,
+        dense=_configured_weight(args, search_config, "weight_dense", defaults.dense),
+        rrf=_configured_weight(args, search_config, "weight_rrf", defaults.rrf),
         capability=(
-            getattr(args, "weight_capability", None)
-            if getattr(args, "weight_capability", None) is not None
-            else defaults.capability
+            _configured_weight(args, search_config, "weight_capability", defaults.capability)
         ),
-        usage=getattr(args, "weight_usage", None) if getattr(args, "weight_usage", None) is not None else defaults.usage,
+        usage=_configured_weight(args, search_config, "weight_usage", defaults.usage),
         input_type=(
-            getattr(args, "weight_input_type", None)
-            if getattr(args, "weight_input_type", None) is not None
-            else defaults.input_type
+            _configured_weight(args, search_config, "weight_input_type", defaults.input_type)
         ),
         output_type=(
-            getattr(args, "weight_output_type", None)
-            if getattr(args, "weight_output_type", None) is not None
-            else defaults.output_type
+            _configured_weight(args, search_config, "weight_output_type", defaults.output_type)
         ),
-        penalty=getattr(args, "weight_penalty", None) if getattr(args, "weight_penalty", None) is not None else defaults.penalty,
+        penalty=_configured_weight(args, search_config, "weight_penalty", defaults.penalty),
     )
+
+
+def _configured_weight(args: argparse.Namespace, search_config, name: str, default: float) -> float:
+    cli_value = getattr(args, name, None)
+    if cli_value is not None:
+        return cli_value
+    config_value = getattr(search_config, name)
+    if config_value is not None:
+        return config_value
+    return default
 
 
 if __name__ == "__main__":

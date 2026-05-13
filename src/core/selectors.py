@@ -48,8 +48,8 @@ class HybridSearchToolSelector:
             SkillSearchRequest(
                 query=request.prompt,
                 task_context=request.task_context,
-                top_k=_retrieval_top_k(request.top_k, self.candidate_pool_size),
-            )
+            ),
+            top_k=_retrieval_top_k(request.top_k, self.candidate_pool_size),
         )
         search_candidates = [
             CandidateTool(

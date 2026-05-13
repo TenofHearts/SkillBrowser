@@ -68,12 +68,19 @@ class _SearchScores:
     lexical: float
     sparse_view: float
     dense: float
+    dense_description: float
+    dense_capability: float
+    dense_usage: float
+    dense_schema: float
+    dense_section: float
     rrf: float
     capability: float
     usage: float
     input_type: float
     output_type: float
     penalty: float
+    negative_signal_penalty: float
+    hard_mismatch_penalty: float
 
     def total(self, weights: "SearchWeights") -> float:
         return (
@@ -86,19 +93,21 @@ class _SearchScores:
             + self.input_type * weights.input_type
             + self.output_type * weights.output_type
             - self.penalty * weights.penalty
+            - self.negative_signal_penalty * weights.penalty
+            - self.hard_mismatch_penalty * weights.penalty
         )
 
 
 @dataclass(frozen=True)
 class SearchWeights:
-    lexical: float = 2.2
-    sparse_view: float = 1.0
-    dense: float = 1.8
-    rrf: float = 0.0
-    capability: float = 1.4
-    usage: float = 0.9
-    input_type: float = 0.8
-    output_type: float = 0.8
+    lexical: float = 0.2
+    sparse_view: float = 0.1
+    dense: float = 10.0
+    rrf: float = 0.2
+    capability: float = 0.0
+    usage: float = 0.0
+    input_type: float = 0.0
+    output_type: float = 0.0
     penalty: float = 1.0
 
 
@@ -151,7 +160,16 @@ class SkillSearcher:
         if self.dense_enabled:
             self._build_dense_view_embeddings()
 
-    def search(self, request: SkillSearchRequest) -> SkillSearchResponse:
+    def search(self, request: SkillSearchRequest, *, top_k: int = 5) -> SkillSearchResponse:
+        top_k = min(max(top_k, 1), 50)
+        abstention_reason = self._hard_abstention_reason(request)
+        if abstention_reason:
+            return SkillSearchResponse(
+                query=request.query,
+                results=[],
+                abstained=True,
+                abstention_reason=abstention_reason,
+            )
         query_text = _request_query_text(request)
         query_tokens = tokenize(query_text)
         lexical_raw = (
@@ -172,13 +190,14 @@ class SkillSearcher:
             else {}
         )
         sparse_view_ranks = [_rank_scores(scores) for scores in sparse_view_raw.values()]
-        dense_raw = self._dense_view_scores(query_text)
+        dense_raw = self._dense_view_scores(request)
         dense_ranks = [_rank_scores(scores) for scores in dense_raw.values()]
         rrf_raw = self._rrf_fuse([lexical_rank, *sparse_view_ranks, *dense_ranks])
         rrf_norm = _normalize_by_max(rrf_raw)
         lexical_norm = _normalize_by_max(lexical_raw)
         sparse_view_norm = self._normalized_weighted_view_scores(sparse_view_raw)
-        dense_norm = self._normalized_weighted_view_scores(dense_raw)
+        dense_components = self._dense_multiview_components(dense_raw)
+        dense_norm = dense_components["dense"]
 
         rrf_ranked_indexes = sorted(rrf_raw, key=lambda index: rrf_raw[index], reverse=True)
         candidate_indexes = set(rrf_ranked_indexes[: self.recall_k])
@@ -198,24 +217,62 @@ class SkillSearcher:
             input_type = self._type_overlap(request.input_types, skill.input_types)
             output_type = self._type_overlap(request.output_types, skill.output_types)
             penalty = self._contraindication_penalty(query_tokens, skill)
+            negative_signal_penalty = self._negative_signal_penalty(request, skill)
+            hard_mismatches = self._hard_mismatches(
+                request,
+                skill,
+                dense_capability=dense_components["capability"][index],
+            )
+            hard_mismatch_penalty = float(len(hard_mismatches)) * 2.0
             scores = _SearchScores(
                 lexical=lexical_norm[index],
                 sparse_view=sparse_view_norm[index],
                 dense=dense_norm[index],
+                dense_description=dense_components["description"][index],
+                dense_capability=dense_components["capability"][index],
+                dense_usage=dense_components["usage"][index],
+                dense_schema=dense_components["schema"][index],
+                dense_section=dense_components["section"][index],
                 rrf=rrf_norm.get(index, 0.0),
                 capability=capability,
                 usage=usage,
                 input_type=input_type,
                 output_type=output_type,
                 penalty=penalty,
+                negative_signal_penalty=negative_signal_penalty,
+                hard_mismatch_penalty=hard_mismatch_penalty,
             )
             total_score = scores.total(self.weights)
             if total_score <= self.minimum_score_threshold:
                 continue
-            cards.append(self._card(skill, scores, query_tokens, total_score))
+            cards.append(self._card(skill, request, scores, query_tokens, total_score, hard_mismatches))
 
         cards.sort(key=lambda card: card.score, reverse=True)
-        return SkillSearchResponse(query=request.query, results=cards[: request.top_k])
+        results = cards[:top_k]
+        if request.required_capabilities and results and all(
+            "required_capability_miss" in card.hard_mismatches for card in results
+        ):
+            return SkillSearchResponse(
+                query=request.query,
+                results=[],
+                abstained=True,
+                abstention_reason="required_capability_miss",
+            )
+        if not results and request.required_capabilities and all(
+            self._request_capability_signal(request, skill) <= 0 for skill in self.skills
+        ):
+            return SkillSearchResponse(
+                query=request.query,
+                results=[],
+                abstained=True,
+                abstention_reason="required_capability_miss",
+            )
+        return SkillSearchResponse(
+            query=request.query,
+            results=results,
+            abstained=not results,
+            abstention_reason=None if results else "no_candidate_above_threshold",
+        )
 
     def _bm25(self, query_tokens: list[str], doc_tokens: list[str]) -> float:
         if not query_tokens or not doc_tokens:
@@ -302,14 +359,52 @@ class SkillSearcher:
         safe_view_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", view_name)
         return self.dense_cache_dir / f"{safe_view_name}-{signature.hexdigest()[:16]}.jsonl"
 
-    def _dense_view_scores(self, query_text: str) -> dict[str, list[float]]:
+    def _dense_view_scores(self, request: SkillSearchRequest) -> dict[str, list[float]]:
         if not self.dense_enabled or not self.dense_view_embeddings:
             return {}
-        query_embedding = self.embedder.embed_texts([query_text])[0]
-        return {
-            view_name: [dense_cosine(query_embedding, embedding) for embedding in embeddings]
-            for view_name, embeddings in self.dense_view_embeddings.items()
+        query_by_group = _dense_query_groups(request)
+        embeddings_by_group = {
+            group: self.embedder.embed_texts([query_text])[0]
+            for group, query_text in query_by_group.items()
+            if query_text.strip()
         }
+        scores: dict[str, list[float]] = {}
+        for view_name, embeddings in self.dense_view_embeddings.items():
+            group = _dense_group_for_view(view_name)
+            query_embedding = embeddings_by_group.get(group)
+            if query_embedding is None:
+                scores[view_name] = [0.0 for _ in embeddings]
+                continue
+            scores[view_name] = [dense_cosine(query_embedding, embedding) for embedding in embeddings]
+        return scores
+
+    def _dense_multiview_components(self, dense_raw: dict[str, list[float]]) -> dict[str, list[float]]:
+        components = {
+            "description": [0.0 for _ in self.skills],
+            "capability": [0.0 for _ in self.skills],
+            "usage": [0.0 for _ in self.skills],
+            "schema": [0.0 for _ in self.skills],
+            "section": [0.0 for _ in self.skills],
+        }
+        for group in components:
+            grouped_scores = {
+                view_name: scores
+                for view_name, scores in dense_raw.items()
+                if _dense_group_for_view(view_name) == group
+            }
+            components[group] = self._normalized_weighted_view_scores(grouped_scores)
+
+        components["dense"] = [
+            (
+                0.25 * components["description"][index]
+                + 0.35 * components["capability"][index]
+                + 0.20 * components["usage"][index]
+                + 0.10 * components["schema"][index]
+                + 0.10 * components["section"][index]
+            )
+            for index in range(len(self.skills))
+        ]
+        return components
 
     def _rrf_fuse(self, rank_lists: list[list[_RankedScore]], k: int = 60) -> dict[int, float]:
         fused: defaultdict[int, float] = defaultdict(float)
@@ -373,12 +468,64 @@ class SkillSearcher:
         negative_only_tokens = set(tokenize(contraindication_text)) - set(tokenize(positive_text))
         return min(len(query & negative_only_tokens) * 3.0, 12.0)
 
+    def _negative_signal_penalty(self, request: SkillSearchRequest, skill: SkillSpec) -> float:
+        if not request.negative_signals:
+            return 0.0
+        negative_tokens = set(tokenize(" ".join(request.negative_signals)))
+        if not negative_tokens:
+            return 0.0
+        skill_negative_text = _skill_negative_signal_text(skill)
+        skill_positive_text = _skill_positive_signal_text(skill)
+        negative_only_tokens = set(tokenize(skill_negative_text)) - set(tokenize(skill_positive_text))
+        return min(len(negative_tokens & negative_only_tokens) * 4.0, 16.0)
+
+    def _hard_mismatches(
+        self,
+        request: SkillSearchRequest,
+        skill: SkillSpec,
+        *,
+        dense_capability: float = 0.0,
+    ) -> list[str]:
+        mismatches: list[str] = []
+        if (
+            request.required_capabilities
+            and self._request_capability_signal(request, skill) <= 0
+            and dense_capability < 0.15
+        ):
+            mismatches.append("required_capability_miss")
+        if request.input_types and self._type_overlap(request.input_types, skill.input_types) <= 0:
+            mismatches.append("input_type_miss")
+        if request.constraints.get("readable_required") is True and not skill.interaction.readable:
+            mismatches.append("readable_required_miss")
+        if request.constraints.get("execution_allowed") is False and skill.execution_available:
+            mismatches.append("execution_not_allowed")
+        if request.constraints.get("execution_required") is True and not skill.execution_available:
+            mismatches.append("execution_required_miss")
+        return mismatches
+
+    def _hard_abstention_reason(self, request: SkillSearchRequest) -> str | None:
+        if not self.skills:
+            return "empty_skill_library"
+        if request.input_types and all(self._type_overlap(request.input_types, skill.input_types) <= 0 for skill in self.skills):
+            return "input_type_miss"
+        if request.constraints.get("readable_required") is True and all(
+            not skill.interaction.readable for skill in self.skills
+        ):
+            return "readable_required_miss"
+        if request.constraints.get("execution_required") is True and all(
+            not skill.execution_available for skill in self.skills
+        ):
+            return "execution_required_miss"
+        return None
+
     def _card(
         self,
         skill: SkillSpec,
+        request: SkillSearchRequest,
         scores: _SearchScores,
         query_tokens: list[str],
         total_score: float,
+        hard_mismatches: list[str],
     ) -> SkillCard:
         matched_capabilities = [
             capability.id
@@ -406,16 +553,48 @@ class SkillSearcher:
                 usage=round(scores.usage, 4),
                 sparse_view=round(scores.sparse_view, 4),
                 dense=round(scores.dense, 4),
+                dense_description=round(scores.dense_description, 4),
+                dense_capability=round(scores.dense_capability, 4),
+                dense_usage=round(scores.dense_usage, 4),
+                dense_schema=round(scores.dense_schema, 4),
+                dense_section=round(scores.dense_section, 4),
                 vector=round(scores.dense, 4),
                 rrf=round(scores.rrf, 4),
                 input_type=round(scores.input_type, 4),
                 output_type=round(scores.output_type, 4),
                 contraindication_penalty=round(scores.penalty, 4),
+                negative_signal_penalty=round(scores.negative_signal_penalty, 4),
+                hard_mismatch_penalty=round(scores.hard_mismatch_penalty, 4),
             ),
             usage_constraints=skill.when_not_to_use,
+            missing_capabilities=self._missing_required_capabilities(request, skill),
+            negative_matches=self._negative_matches(request, skill),
+            hard_mismatches=hard_mismatches,
             input_schema=skill.input_schema,
             output_schema=skill.output_schema,
         )
+
+    def _missing_required_capabilities(self, request: SkillSearchRequest, skill: SkillSpec) -> list[str]:
+        if not request.required_capabilities:
+            return []
+        skill_tokens = set()
+        for capability in skill.capabilities:
+            skill_tokens.update(tokenize(f"{capability.id} {capability.description}"))
+        return [
+            capability
+            for capability in request.required_capabilities
+            if not set(tokenize(capability)) & skill_tokens
+        ]
+
+    def _negative_matches(self, request: SkillSearchRequest, skill: SkillSpec) -> list[str]:
+        if not request.negative_signals:
+            return []
+        skill_negative_tokens = set(tokenize(_skill_negative_signal_text(skill)))
+        matches = []
+        for signal in request.negative_signals:
+            if set(tokenize(signal)) & skill_negative_tokens:
+                matches.append(signal)
+        return matches
 
 
 def _available_sections(skill: SkillSpec) -> list[str]:
@@ -433,10 +612,48 @@ def _request_query_text(request: SkillSearchRequest) -> str:
             request.query,
             request.task_context or "",
             " ".join(request.required_capabilities),
+            " ".join(request.desired_capabilities),
             " ".join(request.input_types),
             " ".join(request.output_types),
+            " ".join(request.positive_signals),
+            " ".join(request.negative_signals),
+            _constraints_text(request.constraints),
         ]
     )
+
+
+def _dense_query_groups(request: SkillSearchRequest) -> dict[str, str]:
+    return {
+        "description": "\n".join([request.query, request.task_context or ""]),
+        "capability": "\n".join(
+            [
+                " ".join(request.required_capabilities),
+                " ".join(request.desired_capabilities),
+                request.query,
+            ]
+        ),
+        "usage": "\n".join([" ".join(request.positive_signals), request.query]),
+        "schema": "\n".join(
+            [
+                " ".join(request.input_types),
+                " ".join(request.output_types),
+                _constraints_text(request.constraints),
+            ]
+        ),
+        "section": "\n".join([request.task_context or "", request.query]),
+    }
+
+
+def _dense_group_for_view(view_name: str) -> str:
+    if view_name == "capability":
+        return "capability"
+    if view_name in {"usage", "examples"}:
+        return "usage"
+    if view_name == "schema":
+        return "schema"
+    if view_name.startswith("content_section:"):
+        return "section"
+    return "description"
 
 
 def _skill_positive_signal_text(skill: SkillSpec) -> str:
@@ -455,6 +672,29 @@ def _skill_positive_signal_text(skill: SkillSpec) -> str:
             " ".join(skill.tags),
         ]
     )
+
+
+def _skill_negative_signal_text(skill: SkillSpec) -> str:
+    negative_examples = " ".join(example.user_query for example in skill.examples.negative)
+    failure_sections = ""
+    try:
+        failure_sections = "\n".join(
+            section.content
+            for section in parse_markdown_sections(load_skill_document(skill))
+            if section.key in {"failure_modes", "when_not_to_use", "contraindications"}
+        )
+    except Exception:
+        pass
+    return "\n".join([*skill.when_not_to_use, negative_examples, failure_sections])
+
+
+def _constraints_text(constraints: dict[str, object]) -> str:
+    parts = []
+    for key, value in sorted(constraints.items()):
+        if value is None or value == "":
+            continue
+        parts.append(f"{key}: {value}")
+    return " ".join(parts)
 
 
 def rrf_fusion(rank_lists: list[list[str]], k: int = 60) -> dict[str, float]:

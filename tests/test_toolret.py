@@ -4,9 +4,10 @@ from pathlib import Path
 
 from benchmarks.toolret import (
     TextEmbedder,
+    _soften_toolret_agent_intent,
     build_toolret_first_stage_candidates,
     compare_toolret_hybrid_with_paper_llm,
-    evaluate_toolret_llm_rerank,
+    evaluate_toolret_hybrid_agent,
     evaluate_toolret_paper_llm_baseline,
     evaluate_toolret_retrieval,
     get_toolret_gold_skill_ids,
@@ -19,6 +20,7 @@ from benchmarks.toolret import (
 from cli import main
 from core.search import SkillSearcher
 from llm import MockLLMClient
+from schema import SkillSearchRequest
 
 
 TOOLRET_TOOLS = Path(__file__).parent / "fixtures" / "toolret_tools.jsonl"
@@ -94,30 +96,59 @@ def test_toolret_retrieval_eval_smoke() -> None:
     assert set(result.by_category) == {"web", "code", "customized"}
 
 
-def test_toolret_rankgpt_uses_first_stage_candidates() -> None:
+def test_toolret_hybrid_agent_uses_llm_structured_intent() -> None:
     tools = load_toolret_tools(TOOLRET_TOOLS)
     examples = load_toolret_queries(TOOLRET_QUERIES, limit=1)
-    first_stage = load_toolret_first_stage_candidates(TOOLRET_CANDIDATES)
-    llm = MockLLMClient(['{"ranking": [2, 1]}'])
+    llm = MockLLMClient(
+        [
+            (
+                '{"action": "skill_search", "retrieval_intent": '
+                '{"query": "weather forecast", "required_capabilities": ["weather"]}}'
+            )
+        ]
+    )
 
-    result = evaluate_toolret_llm_rerank(
+    result = evaluate_toolret_hybrid_agent(
         SkillSearcher(tools),
-        tools,
         examples,
         llm,
         top_k=2,
         use_instruction=True,
-        candidate_pool_size=2,
-        first_stage_candidates=first_stage,
-        window_size=2,
-        step_size=1,
     )
 
     assert result.query_count == 1
-    assert result.recall_at["1"] == 1.0
-    assert result.parse_failure_count == 0
+    assert result.input_tokens > 0
+    assert result.output_tokens > 0
     assert llm.calls
-    assert "Instruct:" in llm.calls[0][1]["content"]
+    assert "tool-search benchmark" in llm.calls[0][0]["content"]
+    assert "Do not solve the task" in llm.calls[0][0]["content"]
+
+
+def test_toolret_hybrid_agent_softens_llm_intent_gates() -> None:
+    example = load_toolret_queries(TOOLRET_QUERIES, limit=1)[0]
+    request = _soften_toolret_agent_intent(
+        SkillSearchRequest(
+            query="current date tool",
+            task_context="Find the current date.",
+            required_capabilities=["get_current_date"],
+            desired_capabilities=["timezone handling"],
+            input_types=["text_query"],
+            output_types=["date_string"],
+            positive_signals=["today"],
+            negative_signals=["calendar event"],
+            constraints={"value": ["real-time"]},
+        ),
+        example,
+        use_instruction=True,
+    )
+
+    assert example.query in request.query
+    assert request.required_capabilities == []
+    assert request.input_types == []
+    assert request.output_types == []
+    assert request.constraints == {}
+    assert "get_current_date" in request.desired_capabilities
+    assert "today" in request.positive_signals
 
 
 def test_toolret_paper_llm_baseline_uses_provided_candidates() -> None:
@@ -142,6 +173,65 @@ def test_toolret_paper_llm_baseline_uses_provided_candidates() -> None:
     assert result.recall_at["1"] == 1.0
     assert result.parse_failure_count == 0
     assert llm.calls
+
+
+def test_toolret_paper_llm_baseline_checkpoints_and_resumes(tmp_path: Path) -> None:
+    tools = load_toolret_tools(TOOLRET_TOOLS)
+    examples = load_toolret_queries(TOOLRET_QUERIES, limit=2)
+    first_stage = load_toolret_first_stage_candidates(TOOLRET_CANDIDATES)
+    checkpoint = tmp_path / "rankgpt-checkpoint.jsonl"
+
+    first_llm = MockLLMClient(['{"ranking": [2, 1]}'])
+    first_result = evaluate_toolret_paper_llm_baseline(
+        tools,
+        examples[:1],
+        first_llm,
+        top_k=2,
+        use_instruction=True,
+        candidate_pool_size=2,
+        first_stage_candidates=first_stage,
+        window_size=2,
+        step_size=1,
+        checkpoint_path=checkpoint,
+    )
+    assert first_result.completed_query_count == 1
+    assert checkpoint.exists()
+
+    second_llm = MockLLMClient(['{"ranking": [2, 1]}'])
+    resumed_result = evaluate_toolret_paper_llm_baseline(
+        tools,
+        examples,
+        second_llm,
+        top_k=2,
+        use_instruction=True,
+        candidate_pool_size=2,
+        first_stage_candidates=first_stage,
+        window_size=2,
+        step_size=1,
+        checkpoint_path=checkpoint,
+        resume=True,
+    )
+
+    assert resumed_result.query_count == 2
+    assert resumed_result.completed_query_count == 2
+    assert resumed_result.skipped_checkpoint_count == 1
+    assert len(second_llm.calls) == 1
+
+
+def test_toolret_eval_stops_before_scheduling_when_time_limit_elapsed(tmp_path: Path) -> None:
+    examples = load_toolret_queries(TOOLRET_QUERIES, limit=1)
+    result = evaluate_toolret_retrieval(
+        SkillSearcher(load_toolret_tools(TOOLRET_TOOLS)),
+        examples,
+        top_k=2,
+        use_instruction=True,
+        checkpoint_path=tmp_path / "hybrid-checkpoint.jsonl",
+        max_runtime_seconds=0,
+    )
+
+    assert result.query_count == 0
+    assert result.stopped_early is True
+    assert result.stop_reason == "max_runtime_seconds"
 
 
 def test_toolret_compare_hybrid_with_paper_llm_reports_delta() -> None:
@@ -216,38 +306,34 @@ def test_toolret_cli_smoke(capsys) -> None:
     assert '"recall_at"' in captured.out
 
 
-def test_toolret_rankgpt_cli_smoke(capsys) -> None:
-    exit_code = main(
-        [
-            "eval-toolret",
-            "--tools",
-            str(TOOLRET_TOOLS),
-            "--queries",
-            str(TOOLRET_QUERIES),
-            "--first-stage-candidates",
-            str(TOOLRET_CANDIDATES),
-            "--top-k",
-            "2",
-            "--limit",
-            "1",
-            "--baseline",
-            "rankgpt",
-            "--llm",
-            "mock",
-            "--candidate-pool-size",
-            "2",
-            "--rankgpt-window-size",
-            "2",
-            "--rankgpt-step-size",
-            "1",
-        ]
+def test_toolret_cli_uses_config_defaults_and_creates_output_dir(tmp_path: Path, capsys) -> None:
+    output = tmp_path / "results" / "toolret-result.json"
+    checkpoint = tmp_path / "results" / "toolret-result.checkpoint.jsonl"
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+[toolret]
+tools = "{TOOLRET_TOOLS.as_posix()}"
+queries = "{TOOLRET_QUERIES.as_posix()}"
+top_k = 10
+limit = 3
+baseline = "hybrid"
+retrieval_mode = "hybrid"
+workers = 1
+output = "{output.as_posix()}"
+checkpoint = "{checkpoint.as_posix()}"
+""",
+        encoding="utf-8",
     )
+
+    exit_code = main(["eval-toolret", "--config", str(config_path)])
 
     captured = capsys.readouterr()
 
     assert exit_code == 0
-    assert '"query_count": 1' in captured.out
-    assert '"input_tokens"' in captured.out
+    assert '"query_count": 3' in captured.out
+    assert output.exists()
+    assert checkpoint.exists()
 
 
 def test_toolret_paper_rankgpt_cli_requires_first_stage_candidates(capsys) -> None:

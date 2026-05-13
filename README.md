@@ -142,16 +142,34 @@ Run ToolRet retrieval-only evaluation against ToolRet query/tool exports:
 uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --top-k 10 --limit 30
 ```
 
-The ToolRet command evaluates `SkillSearcher` directly, not the LLM agent. JSONL and JSON exports work without extra dependencies; parquet exports require `pandas` with a parquet engine such as `pyarrow`.
+The ToolRet command evaluates `SkillSearcher` directly by default. Most run options can live in `config.toml`, so repeated experiments can usually be launched with:
+
+```powershell
+uv run skill-agent eval-toolret --config config.toml
+```
+
+JSONL and JSON exports work without extra dependencies; parquet exports require `pandas` with a parquet engine such as `pyarrow`. Put generated result JSON and checkpoints under `data/eval/toolret/results/`; that folder is ignored by git.
 
 ```toml
 [embedding]
-enabled = false
-backend = "none"
-model = "BAAI/bge-small-en-v1.5"
+enabled = true
+backend = "hf-transformers"
+model = "data/models/BAAI/bge-base-en-v1.5"
 batch_size = 8
 max_length = 512
 device = ""
+cache_dir = "data/eval/toolret/embedding_cache"
+
+[search]
+weight_lexical = 1.0
+weight_sparse_view = 0.35
+weight_dense = 0.45
+weight_rrf = 0.2
+weight_capability = 0.25
+weight_usage = 0.15
+weight_input_type = 0.2
+weight_output_type = 0.2
+weight_penalty = 0.4
 
 [toolret]
 queries = "path/to/toolret_queries.jsonl"
@@ -161,7 +179,9 @@ limit = 30
 top_k = 10
 category = "all"
 use_instruction = true
+retrieval_mode = "hybrid"
 baseline = "hybrid"
+llm = "mock"
 first_stage_model = "BAAI/bge-base-en-v1.5"
 first_stage_backend = "auto"
 embed_batch_size = 8
@@ -170,6 +190,10 @@ embed_device = ""
 candidate_pool_size = 100
 rankgpt_window_size = 20
 rankgpt_step_size = 10
+workers = 1
+output = "data/eval/toolret/results/toolret_result.json"
+checkpoint = "data/eval/toolret/results/toolret_result.checkpoint.jsonl"
+resume = false
 ```
 
 To compare instruction-aware and query-only retrieval, run once with `--use-instruction` and once with `--no-instruction`.
@@ -180,7 +204,7 @@ Run the ToolRet paper's LLM agent reranking baseline:
 uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline toolret-rankgpt --llm openai-compatible --top-k 10 --candidate-pool-size 100
 ```
 
-`--baseline toolret-rankgpt` implements the ToolRet paper's RankGPT-style zero-shot LLM reranker over first-stage candidates produced by NV-Embed-v1. It requires `--first-stage-candidates` and intentionally does not fall back to this repo's hybrid retriever. The older `--baseline rankgpt` / `--baseline llm-rerank` modes remain available as local approximations; if their first-stage candidates are omitted, they use the hybrid retriever as a fallback and report token usage, latency, and parse failures.
+`--baseline toolret-rankgpt` implements the ToolRet paper's RankGPT-style zero-shot LLM reranker over first-stage candidates produced by NV-Embed-v1. It requires `--first-stage-candidates` and intentionally does not fall back to this repo's hybrid retriever.
 
 Compare the paper-style LLM pipeline against the SkillSpec hybrid searcher in one run:
 

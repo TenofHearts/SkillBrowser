@@ -16,7 +16,7 @@ from .toolret import (
     NVEmbedV1Embedder,
     build_toolret_first_stage_candidates,
     compare_toolret_hybrid_with_paper_llm,
-    evaluate_toolret_llm_rerank,
+    evaluate_toolret_hybrid_agent,
     evaluate_toolret_paper_llm_baseline,
     evaluate_toolret_retrieval,
     load_toolret_first_stage_candidates,
@@ -122,6 +122,13 @@ def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):
     baseline = args.baseline or toolret_config.baseline
     workers = args.workers if args.workers is not None else toolret_config.workers
     output = args.output or toolret_config.output
+    checkpoint = args.checkpoint if args.checkpoint is not None else toolret_config.checkpoint
+    resume = args.resume or toolret_config.resume
+    max_runtime_seconds = (
+        args.max_runtime_seconds
+        if args.max_runtime_seconds is not None
+        else toolret_config.max_runtime_seconds
+    )
 
     examples = load_toolret_queries(queries, category=category, subset=subset, limit=limit)
     tool_skills = load_toolret_tools(tools)
@@ -134,8 +141,25 @@ def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):
             top_k=top_k,
             use_instruction=use_instruction,
             workers=workers,
+            checkpoint_path=checkpoint,
+            resume=resume,
+            max_runtime_seconds=max_runtime_seconds,
         )
-    elif baseline in {"rankgpt", "llm-rerank", "toolret-rankgpt", "paper-rankgpt", "compare"}:
+    elif baseline == "hybrid-agent":
+        llm_mode = args.llm or toolret_config.llm
+        llm = build_llm(llm_mode, args.config)
+        result = evaluate_toolret_hybrid_agent(
+            searcher,
+            examples,
+            llm,
+            top_k=top_k,
+            use_instruction=use_instruction,
+            workers=workers,
+            checkpoint_path=checkpoint,
+            resume=resume,
+            max_runtime_seconds=max_runtime_seconds,
+        )
+    elif baseline in {"toolret-rankgpt", "compare"}:
         result = _run_llm_toolret_eval(
             args,
             build_llm,
@@ -148,18 +172,24 @@ def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):
             use_instruction,
             workers,
             first_stage_candidates_path,
+            checkpoint,
+            resume,
+            max_runtime_seconds,
         )
     else:
         raise ValueError(f"Unsupported ToolRet baseline: {baseline}")
 
     if output:
-        Path(output).write_text(result.json(indent=2), encoding="utf-8")
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(result.json(indent=2), encoding="utf-8")
     return result
 
 
 def _build_skill_searcher(tool_skills, args: argparse.Namespace, config):
     embedding_config = config.embedding
-    mode = getattr(args, "retrieval_mode", None)
+    toolret_config = config.toolret
+    mode = getattr(args, "retrieval_mode", None) or toolret_config.retrieval_mode
     backend = getattr(args, "embedding_backend", None) or embedding_config.backend
     dense_enabled = embedding_config.enabled and backend != "none"
 
@@ -196,24 +226,39 @@ def _build_skill_searcher(tool_skills, args: argparse.Namespace, config):
         bm25_enabled=bm25_enabled,
         sparse_view_enabled=sparse_view_enabled,
         dense_view_names={"description"},
-        weights=_build_search_weights(args),
-        dense_cache_dir=args.embedding_cache_dir or "data/eval/toolret/embedding_cache",
+        weights=_build_search_weights(args, config),
+        dense_cache_dir=(
+            args.embedding_cache_dir
+            or embedding_config.cache_dir
+            or "data/eval/toolret/embedding_cache"
+        ),
     )
 
 
-def _build_search_weights(args: argparse.Namespace) -> SearchWeights:
+def _build_search_weights(args: argparse.Namespace, config) -> SearchWeights:
+    search_config = config.search
     defaults = SearchWeights()
     return SearchWeights(
-        lexical=args.weight_lexical if args.weight_lexical is not None else defaults.lexical,
-        sparse_view=args.weight_sparse_view if args.weight_sparse_view is not None else defaults.sparse_view,
-        dense=args.weight_dense if args.weight_dense is not None else defaults.dense,
-        rrf=args.weight_rrf if args.weight_rrf is not None else defaults.rrf,
-        capability=args.weight_capability if args.weight_capability is not None else defaults.capability,
-        usage=args.weight_usage if args.weight_usage is not None else defaults.usage,
-        input_type=args.weight_input_type if args.weight_input_type is not None else defaults.input_type,
-        output_type=args.weight_output_type if args.weight_output_type is not None else defaults.output_type,
-        penalty=args.weight_penalty if args.weight_penalty is not None else defaults.penalty,
+        lexical=_configured_weight(args, search_config, "weight_lexical", defaults.lexical),
+        sparse_view=_configured_weight(args, search_config, "weight_sparse_view", defaults.sparse_view),
+        dense=_configured_weight(args, search_config, "weight_dense", defaults.dense),
+        rrf=_configured_weight(args, search_config, "weight_rrf", defaults.rrf),
+        capability=_configured_weight(args, search_config, "weight_capability", defaults.capability),
+        usage=_configured_weight(args, search_config, "weight_usage", defaults.usage),
+        input_type=_configured_weight(args, search_config, "weight_input_type", defaults.input_type),
+        output_type=_configured_weight(args, search_config, "weight_output_type", defaults.output_type),
+        penalty=_configured_weight(args, search_config, "weight_penalty", defaults.penalty),
     )
+
+
+def _configured_weight(args: argparse.Namespace, search_config, name: str, default: float) -> float:
+    cli_value = getattr(args, name, None)
+    if cli_value is not None:
+        return cli_value
+    config_value = getattr(search_config, name)
+    if config_value is not None:
+        return config_value
+    return default
 
 
 def _run_llm_toolret_eval(
@@ -228,6 +273,9 @@ def _run_llm_toolret_eval(
     use_instruction: bool,
     workers: int,
     first_stage_candidates_path: str | None,
+    checkpoint: str | None,
+    resume: bool,
+    max_runtime_seconds: float | None,
 ):
     llm_mode = args.llm or toolret_config.llm
     llm = build_llm(llm_mode, args.config)
@@ -270,9 +318,12 @@ def _run_llm_toolret_eval(
             window_size=window_size,
             step_size=step_size,
             workers=workers,
+            checkpoint_path=checkpoint,
+            resume=resume,
+            max_runtime_seconds=max_runtime_seconds,
         )
 
-    if baseline in {"toolret-rankgpt", "paper-rankgpt"}:
+    if baseline == "toolret-rankgpt":
         if first_stage_candidates is None:
             raise ValueError(
                 "ToolRet paper RankGPT baseline requires --first-stage-candidates "
@@ -289,18 +340,9 @@ def _run_llm_toolret_eval(
             window_size=window_size,
             step_size=step_size,
             workers=workers,
+            checkpoint_path=checkpoint,
+            resume=resume,
+            max_runtime_seconds=max_runtime_seconds,
         )
 
-    return evaluate_toolret_llm_rerank(
-        searcher,
-        tool_skills,
-        examples,
-        llm,
-        top_k=top_k,
-        use_instruction=use_instruction,
-        candidate_pool_size=candidate_pool_size,
-        first_stage_candidates=first_stage_candidates,
-        window_size=window_size,
-        step_size=step_size,
-        workers=workers,
-    )
+    raise ValueError(f"Unsupported ToolRet LLM baseline: {baseline}")

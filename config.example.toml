@@ -19,6 +19,18 @@ model = "BAAI/bge-small-en-v1.5"
 batch_size = 8
 max_length = 512
 device = ""
+cache_dir = "data/eval/toolret/embedding_cache"
+
+[search]
+weight_lexical = 1.0
+weight_sparse_view = 0.35
+weight_dense = 0.45
+weight_rrf = 0.2
+weight_capability = 0.25
+weight_usage = 0.15
+weight_input_type = 0.2
+weight_output_type = 0.2
+weight_penalty = 0.4
 
 [toolret]
 queries = "tests/fixtures/toolret_queries.jsonl"
@@ -29,9 +41,9 @@ category = "all"
 limit = 30
 top_k = 10
 use_instruction = true
-# Use "hybrid" for this repo's searcher, "toolret-rankgpt" for the ToolRet paper
-# LLM baseline over NV-Embed-v1 first-stage candidates, or "rankgpt" for the
-# older local approximation that can fall back to the hybrid searcher.
+retrieval_mode = "hybrid"
+# Use "hybrid" for this repo's searcher or "toolret-rankgpt" for the ToolRet
+# paper LLM baseline over NV-Embed-v1 first-stage candidates.
 baseline = "hybrid"
 llm = "mock"
 # Candidate generation can use "hf-transformers" for practical local embedding
@@ -45,4 +57,6 @@ candidate_pool_size = 100
 rankgpt_window_size = 20
 rankgpt_step_size = 10
 workers = 1
-output = ""
+output = "data/eval/toolret/results/toolret_result.json"
+checkpoint = "data/eval/toolret/results/toolret_result.checkpoint.jsonl"
+resume = false

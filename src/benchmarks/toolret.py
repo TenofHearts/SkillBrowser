@@ -7,7 +7,7 @@ import math
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from core.search import SkillSearcher
 from core.selectors import extract_json_object_text
+from agent import parse_skill_search_intent, skill_search_intent_messages
 from llm import LLMClient
 from schema import (
     SkillSearchRequest,
@@ -54,6 +55,12 @@ class ToolRetEvalResult(BaseModel):
     token_usage_sources: dict[str, int] = Field(default_factory=dict)
     by_category: dict[str, dict[str, float]] = Field(default_factory=dict)
     misses: list[dict[str, Any]] = Field(default_factory=list)
+    total_query_count: int = 0
+    completed_query_count: int = 0
+    skipped_checkpoint_count: int = 0
+    stopped_early: bool = False
+    stop_reason: Optional[str] = None
+    checkpoint_path: Optional[str] = None
 
 
 class ToolRetComparisonResult(BaseModel):
@@ -428,7 +435,7 @@ def toolret_query_to_search_request(
 ) -> SkillSearchRequest:
     query = example.query
     task_context = example.instruction if use_instruction and example.instruction else None
-    return SkillSearchRequest(query=query, task_context=task_context, top_k=top_k)
+    return SkillSearchRequest(query=query, task_context=task_context)
 
 
 def get_toolret_gold_skill_ids(example: ToolRetQueryExample) -> list[str]:
@@ -451,6 +458,9 @@ def evaluate_toolret_retrieval(
     top_k: int = 10,
     use_instruction: bool = True,
     workers: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume: bool = False,
+    max_runtime_seconds: float | None = None,
 ) -> ToolRetEvalResult:
     return _evaluate_toolret(
         examples,
@@ -458,42 +468,33 @@ def evaluate_toolret_retrieval(
         use_instruction=use_instruction,
         runner=lambda example: _run_hybrid_toolret(searcher, example, top_k, use_instruction),
         workers=workers,
+        checkpoint_path=checkpoint_path,
+        resume=resume,
+        max_runtime_seconds=max_runtime_seconds,
     )
 
 
-def evaluate_toolret_llm_rerank(
+def evaluate_toolret_hybrid_agent(
     searcher: SkillSearcher,
-    skills: list[SkillSpec],
     examples: list[ToolRetQueryExample],
     llm: LLMClient,
     *,
     top_k: int = 10,
     use_instruction: bool = True,
-    candidate_pool_size: int = 50,
-    first_stage_candidates: dict[str, list[str]] | None = None,
-    window_size: int = 20,
-    step_size: int = 10,
     workers: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume: bool = False,
+    max_runtime_seconds: float | None = None,
 ) -> ToolRetEvalResult:
-    pool_size = max(candidate_pool_size, top_k)
-    skill_by_id = {skill.id: skill for skill in skills}
     return _evaluate_toolret(
         examples,
         top_k=top_k,
         use_instruction=use_instruction,
-        runner=lambda example: _run_rankgpt_toolret(
-            searcher,
-            skill_by_id,
-            llm,
-            example,
-            top_k,
-            use_instruction,
-            pool_size,
-            first_stage_candidates,
-            window_size,
-            step_size,
-        ),
+        runner=lambda example: _run_hybrid_agent_toolret(searcher, llm, example, top_k, use_instruction),
         workers=workers,
+        checkpoint_path=checkpoint_path,
+        resume=resume,
+        max_runtime_seconds=max_runtime_seconds,
     )
 
 
@@ -509,6 +510,9 @@ def evaluate_toolret_paper_llm_baseline(
     window_size: int = 20,
     step_size: int = 10,
     workers: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume: bool = False,
+    max_runtime_seconds: float | None = None,
 ) -> ToolRetEvalResult:
     """Evaluate the ToolRet paper's LLM-agent baseline.
 
@@ -523,7 +527,6 @@ def evaluate_toolret_paper_llm_baseline(
         top_k=top_k,
         use_instruction=use_instruction,
         runner=lambda example: _run_rankgpt_toolret(
-            None,
             skill_by_id,
             llm,
             example,
@@ -535,6 +538,9 @@ def evaluate_toolret_paper_llm_baseline(
             step_size,
         ),
         workers=workers,
+        checkpoint_path=checkpoint_path,
+        resume=resume,
+        max_runtime_seconds=max_runtime_seconds,
     )
 
 
@@ -551,13 +557,20 @@ def compare_toolret_hybrid_with_paper_llm(
     window_size: int = 20,
     step_size: int = 10,
     workers: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume: bool = False,
+    max_runtime_seconds: float | None = None,
 ) -> ToolRetComparisonResult:
+    checkpoint_base = Path(checkpoint_path) if checkpoint_path else None
     hybrid = evaluate_toolret_retrieval(
         searcher,
         examples,
         top_k=top_k,
         use_instruction=use_instruction,
         workers=workers,
+        checkpoint_path=_checkpoint_variant(checkpoint_base, "hybrid"),
+        resume=resume,
+        max_runtime_seconds=max_runtime_seconds,
     )
     llm_result = evaluate_toolret_paper_llm_baseline(
         skills,
@@ -570,6 +583,9 @@ def compare_toolret_hybrid_with_paper_llm(
         window_size=window_size,
         step_size=step_size,
         workers=workers,
+        checkpoint_path=_checkpoint_variant(checkpoint_base, "llm"),
+        resume=resume,
+        max_runtime_seconds=max_runtime_seconds,
     )
     return ToolRetComparisonResult(
         query_count=len(examples),
@@ -621,6 +637,9 @@ def _evaluate_toolret(
     use_instruction: bool,
     runner: Any,
     workers: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume: bool = False,
+    max_runtime_seconds: float | None = None,
 ) -> ToolRetEvalResult:
     metric_names = ["recall@1", "recall@3", "recall@5", "recall@10", "precision@10", "mrr@10", "ndcg@10", "completeness@10"]
     totals = {name: 0.0 for name in metric_names}
@@ -634,14 +653,62 @@ def _evaluate_toolret(
     token_usage_sources: dict[str, int] = {}
 
     started = time.perf_counter()
-    items: list[tuple[ToolRetQueryExample, dict[str, Any]]] = []
-    if workers <= 1:
-        items = [(example, runner(example)) for example in examples]
-    else:
-        with ThreadPoolExecutor(max_workers=max(workers, 1)) as executor:
-            futures = {executor.submit(runner, example): example for example in examples}
-            for future in as_completed(futures):
-                items.append((futures[future], future.result()))
+    checkpoint = Path(checkpoint_path) if checkpoint_path else None
+    checkpoint_items = _load_toolret_checkpoints(checkpoint) if resume else {}
+    pending_examples = [example for example in examples if example.id not in checkpoint_items]
+    items: list[tuple[ToolRetQueryExample, dict[str, Any]]] = [
+        (example, checkpoint_items[example.id])
+        for example in examples
+        if example.id in checkpoint_items
+    ]
+    stopped_early = False
+    stop_reason = None
+
+    if pending_examples:
+        if checkpoint:
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        if workers <= 1:
+            for example in pending_examples:
+                if _runtime_exceeded(started, max_runtime_seconds):
+                    stopped_early = True
+                    stop_reason = "max_runtime_seconds"
+                    break
+                item = runner(example)
+                items.append((example, item))
+                _append_toolret_checkpoint(checkpoint, example, item)
+        else:
+            max_workers = max(workers, 1)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                pending_iter = iter(pending_examples)
+                futures: dict[Any, ToolRetQueryExample] = {}
+
+                def submit_until_full() -> None:
+                    while len(futures) < max_workers and not _runtime_exceeded(started, max_runtime_seconds):
+                        try:
+                            next_example = next(pending_iter)
+                        except StopIteration:
+                            return
+                        futures[executor.submit(runner, next_example)] = next_example
+
+                submit_until_full()
+                while futures:
+                    try:
+                        for future in as_completed(list(futures), timeout=1):
+                            example = futures.pop(future)
+                            item = future.result()
+                            items.append((example, item))
+                            _append_toolret_checkpoint(checkpoint, example, item)
+                            break
+                    except FuturesTimeoutError:
+                        pass
+                    if _runtime_exceeded(started, max_runtime_seconds):
+                        stopped_early = True
+                        stop_reason = "max_runtime_seconds"
+                        for future in futures:
+                            future.cancel()
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+                    submit_until_full()
 
     for example, item in items:
         ranked_ids = item["ranked_ids"][:top_k]
@@ -677,13 +744,17 @@ def _evaluate_toolret(
                 }
             )
 
-    total = len(examples)
+    total = len(items)
+    if total == 0:
+        stopped_early = True
+        stop_reason = stop_reason or "no_completed_items"
+        total = 1
     by_category = {
         category: {name: round(value / category_counts[category], 4) for name, value in values.items()}
         for category, values in category_totals.items()
     }
     return ToolRetEvalResult(
-        query_count=total,
+        query_count=len(items),
         top_k=top_k,
         use_instruction=use_instruction,
         recall_at={
@@ -706,7 +777,60 @@ def _evaluate_toolret(
         token_usage_sources=token_usage_sources,
         by_category=by_category,
         misses=misses[:20],
+        total_query_count=len(examples),
+        completed_query_count=len(items),
+        skipped_checkpoint_count=len(checkpoint_items),
+        stopped_early=stopped_early,
+        stop_reason=stop_reason,
+        checkpoint_path=str(checkpoint) if checkpoint else None,
     )
+
+
+def _runtime_exceeded(started: float, max_runtime_seconds: float | None) -> bool:
+    return max_runtime_seconds is not None and (time.perf_counter() - started) >= max_runtime_seconds
+
+
+def _append_toolret_checkpoint(
+    checkpoint_path: Path | None,
+    example: ToolRetQueryExample,
+    item: dict[str, Any],
+) -> None:
+    if checkpoint_path is None:
+        return
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "example_id": example.id,
+        "category": example.category,
+        "query": example.query,
+        "item": item,
+    }
+    with checkpoint_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _load_toolret_checkpoints(checkpoint_path: Path | None) -> dict[str, dict[str, Any]]:
+    if checkpoint_path is None or not checkpoint_path.exists():
+        return {}
+    completed: dict[str, dict[str, Any]] = {}
+    for line_number, line in enumerate(checkpoint_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+            example_id = str(record["example_id"])
+            item = record["item"]
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Invalid ToolRet checkpoint row at {checkpoint_path}:{line_number}: {exc}") from exc
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid ToolRet checkpoint item at {checkpoint_path}:{line_number}")
+        completed[example_id] = item
+    return completed
+
+
+def _checkpoint_variant(checkpoint_path: Path | None, suffix: str) -> Path | None:
+    if checkpoint_path is None:
+        return None
+    return checkpoint_path.with_name(f"{checkpoint_path.stem}-{suffix}{checkpoint_path.suffix or '.jsonl'}")
 
 
 def _run_hybrid_toolret(
@@ -716,7 +840,10 @@ def _run_hybrid_toolret(
     use_instruction: bool,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    response = searcher.search(toolret_query_to_search_request(example, top_k=top_k, use_instruction=use_instruction))
+    response = searcher.search(
+        toolret_query_to_search_request(example, top_k=top_k, use_instruction=use_instruction),
+        top_k=top_k,
+    )
     return {
         "ranked_ids": [card.id for card in response.results],
         "latency_ms": round((time.perf_counter() - started) * 1000),
@@ -728,35 +855,126 @@ def _run_hybrid_toolret(
     }
 
 
+def _run_hybrid_agent_toolret(
+    searcher: SkillSearcher,
+    llm: LLMClient,
+    example: ToolRetQueryExample,
+    top_k: int,
+    use_instruction: bool,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    task = _toolret_agent_task(example, use_instruction)
+    completion = llm.complete_with_usage(skill_search_intent_messages(task, benchmark_retrieval=True))
+    search_request, parse_error = parse_skill_search_intent(completion.content, example.query)
+    if search_request is None:
+        search_request = toolret_query_to_search_request(example, top_k=top_k, use_instruction=use_instruction)
+    else:
+        search_request = _soften_toolret_agent_intent(search_request, example, use_instruction=use_instruction)
+    response = searcher.search(search_request, top_k=top_k)
+    return {
+        "ranked_ids": [card.id for card in response.results],
+        "parse_error": parse_error,
+        "input_tokens": completion.input_tokens,
+        "output_tokens": completion.output_tokens,
+        "latency_ms": round((time.perf_counter() - started) * 1000),
+        "token_usage_source": completion.token_usage_source,
+        "score_breakdowns": {
+            card.id: card.score_breakdown.dict()
+            for card in response.results[:10]
+        },
+        "search_request": search_request.dict(),
+        "raw_model_output": completion.content,
+    }
+
+
+def _toolret_agent_task(example: ToolRetQueryExample, use_instruction: bool) -> str:
+    if use_instruction and example.instruction:
+        return f"Instruct: {example.instruction}\nQuery: {example.query}"
+    return example.query
+
+
+def _soften_toolret_agent_intent(
+    request: SkillSearchRequest,
+    example: ToolRetQueryExample,
+    *,
+    use_instruction: bool,
+) -> SkillSearchRequest:
+    """Keep LLM intent dense-useful without turning inferred fields into ToolRet gates."""
+    query_parts = [example.query]
+    if request.query and request.query.strip() and request.query.strip() != example.query:
+        query_parts.append(request.query.strip())
+    desired_capabilities = [*request.desired_capabilities, *request.required_capabilities]
+    positive_signals = [*request.positive_signals]
+    for value in [*request.input_types, *request.output_types]:
+        if _is_toolret_concrete_type(value):
+            positive_signals.append(value)
+    return SkillSearchRequest(
+        query=" ".join(dict.fromkeys(query_parts)),
+        task_context=request.task_context or (example.instruction if use_instruction and example.instruction else None),
+        required_capabilities=[],
+        desired_capabilities=_dedupe_nonempty(desired_capabilities),
+        input_types=[],
+        output_types=[],
+        positive_signals=_dedupe_nonempty(positive_signals),
+        negative_signals=_dedupe_nonempty(request.negative_signals),
+        constraints={},
+    )
+
+
+def _is_toolret_concrete_type(value: str) -> bool:
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    concrete_types = {
+        "api",
+        "audio",
+        "code",
+        "csv",
+        "database",
+        "document",
+        "email",
+        "file",
+        "html",
+        "image",
+        "json",
+        "pdf",
+        "spreadsheet",
+        "sql",
+        "table",
+        "text",
+        "url",
+        "video",
+        "xml",
+    }
+    return normalized in concrete_types
+
+
+def _dedupe_nonempty(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        key = text.lower()
+        if text and key not in seen:
+            deduped.append(text)
+            seen.add(key)
+    return deduped
+
+
 def _run_rankgpt_toolret(
-    searcher: SkillSearcher | None,
     skill_by_id: dict[str, SkillSpec],
     llm: LLMClient,
     example: ToolRetQueryExample,
     top_k: int,
     use_instruction: bool,
     candidate_pool_size: int,
-    first_stage_candidates: dict[str, list[str]] | None,
+    first_stage_candidates: dict[str, list[str]],
     window_size: int,
     step_size: int,
 ) -> dict[str, Any]:
-    if first_stage_candidates is not None:
-        candidate_ids = [
-            skill_id
-            for skill_id in first_stage_candidates.get(example.id, [])[:candidate_pool_size]
-            if skill_id in skill_by_id
-        ]
-        score_breakdowns = {}
-        first_stage_source = "provided"
-    else:
-        if searcher is None:
-            raise ValueError("ToolRet paper LLM baseline requires first-stage candidates from NV-Embed-v1")
-        request_top_k = min(candidate_pool_size, 50)
-        request = toolret_query_to_search_request(example, top_k=request_top_k, use_instruction=use_instruction)
-        search_response = searcher.search(request)
-        candidate_ids = [card.id for card in search_response.results]
-        score_breakdowns = {card.id: card.score_breakdown.dict() for card in search_response.results[:10]}
-        first_stage_source = "hybrid-fallback"
+    candidate_ids = [
+        skill_id
+        for skill_id in first_stage_candidates.get(example.id, [])[:candidate_pool_size]
+        if skill_id in skill_by_id
+    ]
 
     candidates = [_toolret_candidate_doc(skill_by_id[skill_id]) for skill_id in candidate_ids]
     if not candidates:
@@ -779,8 +997,8 @@ def _run_rankgpt_toolret(
         "output_tokens": stats["output_tokens"],
         "latency_ms": stats["latency_ms"],
         "token_usage_source": stats["token_usage_source"],
-        "score_breakdowns": score_breakdowns,
-        "first_stage_source": first_stage_source,
+        "score_breakdowns": {},
+        "first_stage_source": "provided",
     }
 
 

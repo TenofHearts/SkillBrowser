@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from benchmarks.retrieval import (
     RetrievalExample,
@@ -31,7 +32,7 @@ def test_load_skills() -> None:
 
 def test_search_returns_relevant_skill() -> None:
     skills = load_skills(SKILL_DIR)
-    response = SkillSearcher(skills).search(SkillSearchRequest(query="extract text from a PDF", top_k=1))
+    response = SkillSearcher(skills).search(SkillSearchRequest(query="extract text from a PDF"), top_k=1)
     assert response.results[0].id == "pdf.extract_text"
     assert response.results[0].execution_available is True
     assert response.results[0].read_recommendation in response.results[0].available_sections
@@ -39,7 +40,7 @@ def test_search_returns_relevant_skill() -> None:
 
 def test_search_penalizes_when_not_to_use_matches() -> None:
     skills = load_skills(SKILL_DIR)
-    response = SkillSearcher(skills).search(SkillSearchRequest(query="OCR screenshot image", top_k=5))
+    response = SkillSearcher(skills).search(SkillSearchRequest(query="OCR screenshot image"), top_k=5)
     assert all(card.id != "pdf.extract_text" for card in response.results)
 
 
@@ -58,7 +59,7 @@ def test_rrf_fuses_independent_rank_lists() -> None:
 
 def test_multi_view_retrieval_uses_example_and_vector_rank_lists() -> None:
     skills = load_skills(SKILL_DIR)
-    response = SkillSearcher(skills).search(SkillSearchRequest(query="main contribution", top_k=1))
+    response = SkillSearcher(skills).search(SkillSearchRequest(query="main contribution"), top_k=1)
 
     assert response.results[0].id == "research.paper_claim_method_finding"
     assert response.results[0].score_breakdown.sparse_view > 0
@@ -68,7 +69,7 @@ def test_multi_view_retrieval_uses_example_and_vector_rank_lists() -> None:
 
 def test_dense_retrieval_handles_semantic_query_without_keyword_overlap() -> None:
     skills = load_skills(SKILL_DIR)
-    request = SkillSearchRequest(query="portable", top_k=1)
+    request = SkillSearchRequest(query="portable")
 
     bm25_response = SkillSearcher(
         skills,
@@ -91,13 +92,126 @@ def test_dense_retrieval_handles_semantic_query_without_keyword_overlap() -> Non
     assert dense_response.results[0].score_breakdown.sparse_view == 0
 
 
+def test_skill_search_request_rejects_top_k_in_structured_intent() -> None:
+    with pytest.raises(ValidationError, match="top_k"):
+        SkillSearchRequest(query="extract text from a PDF", top_k=1)
+
+
+def test_dense_first_weights_dominate_semantic_matches() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=True,
+        sparse_view_enabled=True,
+    ).search(SkillSearchRequest(query="portable"), top_k=1)
+
+    assert response.results[0].id == "pdf.extract_text"
+    assert response.results[0].score > 1.0
+    assert response.results[0].score_breakdown.dense > 0
+    assert response.results[0].score_breakdown.lexical == 0
+
+
+def test_capability_match_flows_through_dense_capability_view() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=False,
+        sparse_view_enabled=False,
+    ).search(
+        SkillSearchRequest(query="handle this", required_capabilities=["extract method"]),
+        top_k=1,
+    )
+
+    assert response.results[0].id == "research.paper_claim_method_finding"
+    assert response.results[0].score_breakdown.dense_capability > 0
+
+
+def test_dense_capability_view_prevents_premature_required_capability_abstention() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=False,
+        sparse_view_enabled=False,
+    ).search(
+        SkillSearchRequest(query="handle this", required_capabilities=["contribution evidence"]),
+        top_k=1,
+    )
+
+    assert response.abstained is False
+    assert response.results[0].id == "research.paper_claim_method_finding"
+
+
+def test_search_hard_abstains_when_required_capability_is_missing() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(skills).search(
+        SkillSearchRequest(query="handle this", required_capabilities=["send email newsletter"]),
+        top_k=5,
+    )
+
+    assert response.abstained is True
+    assert response.abstention_reason == "required_capability_miss"
+    assert response.results == []
+
+
+def test_usage_examples_flow_through_dense_usage_view() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=False,
+        sparse_view_enabled=False,
+    ).search(
+        SkillSearchRequest(
+            query="handle this",
+            positive_signals=["What is the main contribution of this paper?"],
+        ),
+        top_k=1,
+    )
+
+    assert response.results[0].id == "research.paper_claim_method_finding"
+    assert response.results[0].score_breakdown.dense_usage > 0
+
+
+def test_negative_signals_suppress_strong_dense_matches() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=True,
+        sparse_view_enabled=True,
+    ).search(
+        SkillSearchRequest(
+            query="extract text from PDF",
+            negative_signals=["OCR screenshot image"],
+        ),
+        top_k=5,
+    )
+
+    assert all(card.id != "pdf.extract_text" for card in response.results)
+
+
+def test_search_top_k_is_configured_outside_structured_request() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(skills).search(SkillSearchRequest(query="paper PDF analysis"), top_k=1)
+
+    assert len(response.results) == 1
+
+
 def test_hybrid_combines_dense_and_sparse_rank_lists() -> None:
     skills = load_skills(SKILL_DIR)
     response = SkillSearcher(
         skills,
         embedder=FakeSemanticEmbedder(),
         dense_enabled=True,
-    ).search(SkillSearchRequest(query="portable document", top_k=1))
+    ).search(SkillSearchRequest(query="portable document"), top_k=1)
 
     assert response.results[0].id == "pdf.extract_text"
     assert response.results[0].score_breakdown.dense > 0
@@ -115,8 +229,8 @@ def test_request_capability_and_type_hints_influence_search() -> None:
             required_capabilities=["extract_method"],
             input_types=["paper_text"],
             output_types=["structured_text"],
-            top_k=1,
-        )
+        ),
+        top_k=1,
     )
     pdf_response = searcher.search(
         SkillSearchRequest(
@@ -124,8 +238,8 @@ def test_request_capability_and_type_hints_influence_search() -> None:
             required_capabilities=["read_pdf"],
             input_types=["pdf"],
             output_types=["json"],
-            top_k=1,
-        )
+        ),
+        top_k=1,
     )
 
     assert paper_response.results[0].id == "research.paper_claim_method_finding"
@@ -138,7 +252,8 @@ def test_request_capability_and_type_hints_influence_search() -> None:
 def test_contraindication_remains_stronger_than_hybrid_positive_matches() -> None:
     skills = load_skills(SKILL_DIR)
     response = SkillSearcher(skills).search(
-        SkillSearchRequest(query="extract text from screenshot OCR image", input_types=["image"], top_k=5)
+        SkillSearchRequest(query="extract text from screenshot OCR image", input_types=["image"]),
+        top_k=5,
     )
 
     assert all(card.id != "pdf.extract_text" for card in response.results)
@@ -231,7 +346,7 @@ def test_retrieval_evaluation_reports_metrics() -> None:
     assert result.misses == []
 
 
-def test_legacy_retrieval_examples_normalize_to_expected_skill_ids() -> None:
+def test_retrieval_examples_use_expected_skill_ids() -> None:
     examples = load_retrieval_dataset(Path(__file__).parent / "fixtures" / "retrieval_eval.jsonl")
 
     assert examples[0].expected_skill_ids == ["pdf.extract_text"]

@@ -39,6 +39,19 @@ class EmbeddingConfig(BaseModel):
     batch_size: int = 8
     max_length: int = 512
     device: Optional[str] = None
+    cache_dir: Optional[str] = None
+
+
+class SearchConfig(BaseModel):
+    weight_lexical: Optional[float] = None
+    weight_sparse_view: Optional[float] = None
+    weight_dense: Optional[float] = None
+    weight_rrf: Optional[float] = None
+    weight_capability: Optional[float] = None
+    weight_usage: Optional[float] = None
+    weight_input_type: Optional[float] = None
+    weight_output_type: Optional[float] = None
+    weight_penalty: Optional[float] = None
 
 
 class ToolRetConfig(BaseModel):
@@ -50,6 +63,7 @@ class ToolRetConfig(BaseModel):
     limit: int = 30
     top_k: int = 10
     use_instruction: bool = True
+    retrieval_mode: Optional[str] = None
     baseline: str = "hybrid"
     llm: str = "mock"
     first_stage_model: str = "BAAI/bge-base-en-v1.5"
@@ -62,12 +76,16 @@ class ToolRetConfig(BaseModel):
     rankgpt_step_size: int = 10
     workers: int = 1
     output: Optional[str] = None
+    checkpoint: Optional[str] = None
+    resume: bool = False
+    max_runtime_seconds: Optional[float] = None
 
 
 class AppConfig(BaseModel):
     llm: Optional[LLMConfig] = None
     agent: AgentConfig = AgentConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
+    search: SearchConfig = SearchConfig()
     toolret: ToolRetConfig = ToolRetConfig()
 
 

@@ -2,11 +2,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 tests/.tmp/
+.tmp/
 data/indexes/
 data/models/
 data/**/*.log
 data/**/logs/
 data/**/results/
+data/eval/toolret/results/
 data/**/result*.json
 data/**/embedding_cache/
 data/**/*candidates*.jsonl

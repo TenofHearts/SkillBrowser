@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent import SkillAgent
+from agent import SkillAgent, parse_skill_search_intent
 from cli import main
 from core.search import SkillSearcher
 from llm import MockLLMClient
@@ -18,7 +18,7 @@ def test_agent_searches_reads_and_returns_final_answer() -> None:
     skills = load_skills(SKILL_DIR)
     llm = MockLLMClient(
         [
-            '{"action": "skill_search", "query": "extract text from a PDF"}',
+            '{"action": "skill_search", "retrieval_intent": {"query": "extract text from a PDF", "required_capabilities": ["read_pdf"], "input_types": ["pdf"]}}',
             '{"selected_ids": ["pdf.extract_text"], "reason": "PDF text extraction is needed."}',
             '{"final_answer": "Use the PDF extraction skill before downstream analysis."}',
         ]
@@ -32,7 +32,7 @@ def test_agent_searches_reads_and_returns_final_answer() -> None:
     assert result.read_skill_ids == ["pdf.extract_text"]
     assert result.final_answer == "Use the PDF extraction skill before downstream analysis."
     assert [step.action for step in result.steps] == [
-        "llm_decide_tools",
+        "llm_extract_search_intent",
         "skill_search",
         "llm_choose_skill",
         "skill_read",
@@ -44,7 +44,7 @@ def test_agent_records_parse_errors_and_falls_back_to_top_search_result() -> Non
     skills = load_skills(SKILL_DIR)
     llm = MockLLMClient(
         [
-            '{"action": "skill_search", "query": "extract text from a PDF"}',
+            '{"action": "skill_search", "retrieval_intent": {"query": "extract text from a PDF"}}',
             "not json",
             '{"final_answer": "Fallback still produced an answer."}',
         ]
@@ -58,6 +58,18 @@ def test_agent_records_parse_errors_and_falls_back_to_top_search_result() -> Non
     assert result.parse_errors
     assert result.steps[2].error is not None
     assert result.final_answer == "Fallback still produced an answer."
+
+
+def test_parse_skill_search_intent_accepts_bare_retrieval_intent() -> None:
+    request, error = parse_skill_search_intent(
+        '{"query": "weather forecast", "desired_capabilities": ["weather lookup"]}',
+        "weather",
+    )
+
+    assert error is None
+    assert request is not None
+    assert request.query == "weather forecast"
+    assert request.desired_capabilities == ["weather lookup"]
 
 
 def test_run_agent_cli_smoke(capsys) -> None:
