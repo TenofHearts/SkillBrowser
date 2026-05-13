@@ -42,6 +42,11 @@ class ToolRetConfig(BaseModel):
     use_instruction: bool = True
     baseline: str = "hybrid"
     llm: str = "mock"
+    first_stage_model: str = "BAAI/bge-base-en-v1.5"
+    first_stage_backend: str = "auto"
+    embed_batch_size: int = 8
+    embed_max_length: int = 512
+    embed_device: Optional[str] = None
     candidate_pool_size: int = 100
     rankgpt_window_size: int = 20
     rankgpt_step_size: int = 10

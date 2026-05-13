@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 tests/.tmp/
 data/indexes/
+data/models/
 .uv-cache/
 .venv/
 venv/

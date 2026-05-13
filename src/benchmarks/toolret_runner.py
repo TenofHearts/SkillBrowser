@@ -11,6 +11,7 @@ from core.search import SkillSearcher
 from llm import LLMClient
 
 from .toolret import (
+    HFTransformersEmbedder,
     NVEmbedV1Embedder,
     build_toolret_first_stage_candidates,
     compare_toolret_hybrid_with_paper_llm,
@@ -27,6 +28,8 @@ BuildLLM = Callable[[str, str], LLMClient]
 
 
 def run_build_toolret_candidates(args: argparse.Namespace):
+    config = load_app_config_if_exists(args.config)
+    toolret_config = config.toolret
     examples = load_toolret_queries(
         args.queries,
         category=args.category,
@@ -34,11 +37,17 @@ def run_build_toolret_candidates(args: argparse.Namespace):
         limit=args.limit,
     )
     tool_skills = load_toolret_tools(args.tools)
-    embedder = NVEmbedV1Embedder(
-        model_name=args.model,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        device=args.device,
+    model_name = args.model or toolret_config.first_stage_model
+    backend = args.embedding_backend or toolret_config.first_stage_backend
+    batch_size = args.batch_size if args.batch_size is not None else toolret_config.embed_batch_size
+    max_length = args.max_length if args.max_length is not None else toolret_config.embed_max_length
+    device = args.device if args.device is not None else (toolret_config.embed_device or None)
+    embedder = _build_toolret_embedder(
+        model_name=model_name,
+        backend=backend,
+        batch_size=batch_size,
+        max_length=max_length,
+        device=device,
     )
     return build_toolret_first_stage_candidates(
         tool_skills,
@@ -48,6 +57,41 @@ def run_build_toolret_candidates(args: argparse.Namespace):
         use_instruction=args.use_instruction,
         output_path=args.output,
     )
+
+
+def _build_toolret_embedder(
+    *,
+    model_name: str,
+    backend: str,
+    batch_size: int,
+    max_length: int,
+    device: str | None,
+):
+    resolved_backend = _resolve_embedding_backend(model_name, backend)
+    if resolved_backend == "nv-embed":
+        return NVEmbedV1Embedder(
+            model_name=model_name,
+            batch_size=batch_size,
+            max_length=max_length,
+            device=device,
+        )
+    if resolved_backend == "hf-transformers":
+        return HFTransformersEmbedder(
+            model_name=model_name,
+            batch_size=batch_size,
+            max_length=max_length,
+            device=device,
+        )
+    raise ValueError(f"Unsupported ToolRet embedding backend: {backend}")
+
+
+def _resolve_embedding_backend(model_name: str, backend: str) -> str:
+    if backend != "auto":
+        return backend
+    normalized = model_name.replace("\\", "/").rstrip("/").lower()
+    if normalized.endswith("nv-embed-v1") or normalized == "nvidia/nv-embed-v1":
+        return "nv-embed"
+    return "hf-transformers"
 
 
 def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):

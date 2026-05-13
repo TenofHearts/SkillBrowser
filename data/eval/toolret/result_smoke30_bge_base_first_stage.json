@@ -1,0 +1,309 @@
+{
+  "query_count": 30,
+  "top_k": 10,
+  "use_instruction": true,
+  "first_stage_model": "BAAI/bge-base-en-v1.5",
+  "candidate_file": "data/eval/toolret/bge_base_candidates_smoke30.jsonl",
+  "recall_at": {
+    "1": 0.4917,
+    "3": 0.7194,
+    "5": 0.7806,
+    "10": 0.7806
+  },
+  "precision_at_10": 0.1167,
+  "mrr_at_10": 0.7983,
+  "ndcg_at_10": 0.7148,
+  "completeness_at_10": 0.6,
+  "by_category": {
+    "web": {
+      "recall@1": 0.2667,
+      "recall@3": 0.5667,
+      "recall@5": 0.6167,
+      "recall@10": 0.6167,
+      "precision@10": 0.09,
+      "mrr@10": 0.6367,
+      "ndcg@10": 0.5033,
+      "completeness@10": 0.4
+    },
+    "code": {
+      "recall@1": 0.8,
+      "recall@3": 0.9,
+      "recall@5": 1.0,
+      "recall@10": 1.0,
+      "precision@10": 0.1,
+      "mrr@10": 0.875,
+      "ndcg@10": 0.9062,
+      "completeness@10": 1.0
+    },
+    "customized": {
+      "recall@1": 0.4083,
+      "recall@3": 0.6917,
+      "recall@5": 0.725,
+      "recall@10": 0.725,
+      "precision@10": 0.16,
+      "mrr@10": 0.8833,
+      "ndcg@10": 0.735,
+      "completeness@10": 0.4
+    }
+  },
+  "misses": [
+    {
+      "id": "apibank_query_0",
+      "query": "Can you tell me about the historical events of April 21st?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_33",
+        "toolret.apibank_tool_53"
+      ],
+      "returned_skill_ids": [
+        "toolret.apibank_tool_33",
+        "toolret.toolACE_tool_12418",
+        "toolret.toolACE_tool_14425",
+        "toolret.apigen_tool_2851",
+        "toolret.toolACE_tool_10958",
+        "toolret.toolbench_tool_9708",
+        "toolret.toolbench_tool_2543",
+        "toolret.toolACE_tool_13948",
+        "toolret.apigen_tool_883",
+        "toolret.toolbench_tool_2693"
+      ]
+    },
+    {
+      "id": "apibank_query_2",
+      "query": "Can you tell me the current date?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_23"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolACE_tool_907",
+        "toolret.tooleyes_tool_5",
+        "toolret.tool_be_honest_tool_530",
+        "toolret.toolACE_tool_13071",
+        "toolret.ultraTool_tool_581",
+        "toolret.t_eval_step_tool_23",
+        "toolret.t_eval_dialog_tool_23",
+        "toolret.toolbench_tool_3634",
+        "toolret.toolACE_tool_3002",
+        "toolret.toolACE_tool_12529"
+      ]
+    },
+    {
+      "id": "apibank_query_4",
+      "query": "Can you delete my alarm at 7:00 a.m. on March 16th?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_0",
+        "toolret.apibank_tool_19",
+        "toolret.apibank_tool_13"
+      ],
+      "returned_skill_ids": [
+        "toolret.apibank_tool_19",
+        "toolret.ultraTool_tool_511",
+        "toolret.ultraTool_tool_514",
+        "toolret.ultraTool_tool_586",
+        "toolret.apibank_tool_20",
+        "toolret.ultraTool_tool_590",
+        "toolret.apibank_tool_18",
+        "toolret.apibank_tool_14",
+        "toolret.ultraTool_tool_547",
+        "toolret.ultraTool_tool_513"
+      ]
+    },
+    {
+      "id": "apibank_query_6",
+      "query": "Hi, can you help me delete my account?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_0",
+        "toolret.apibank_tool_2"
+      ],
+      "returned_skill_ids": [
+        "toolret.apibank_tool_2",
+        "toolret.apibank_tool_26",
+        "toolret.toolACE_tool_6186",
+        "toolret.apibank_tool_6",
+        "toolret.toolalpaca_tool_1788",
+        "toolret.toolalpaca_tool_64",
+        "toolret.toolACE_tool_13432",
+        "toolret.toolalpaca_tool_1049",
+        "toolret.toolalpaca_tool_293",
+        "toolret.toolACE_tool_14722"
+      ]
+    },
+    {
+      "id": "apibank_query_8",
+      "query": "Hi, can you please tell me my current balance?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_0",
+        "toolret.apibank_tool_32"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolalpaca_tool_621",
+        "toolret.toolACE_tool_10675",
+        "toolret.toolbench_tool_10354",
+        "toolret.toolalpaca_tool_1660",
+        "toolret.apibank_tool_32",
+        "toolret.toolalpaca_tool_290",
+        "toolret.toolalpaca_tool_382",
+        "toolret.ultraTool_tool_72",
+        "toolret.toolACE_tool_13452",
+        "toolret.toolACE_tool_4757"
+      ]
+    },
+    {
+      "id": "apibank_query_9",
+      "query": "Can you record my recent health data please?",
+      "category": "web",
+      "expected_skill_ids": [
+        "toolret.apibank_tool_62",
+        "toolret.apibank_tool_58",
+        "toolret.apibank_tool_57"
+      ],
+      "returned_skill_ids": [
+        "toolret.apibank_tool_62",
+        "toolret.apibank_tool_55",
+        "toolret.toolACE_tool_4830",
+        "toolret.toolACE_tool_1700",
+        "toolret.toolbench_tool_4388",
+        "toolret.toolACE_tool_13096",
+        "toolret.toolACE_tool_4697",
+        "toolret.toolACE_tool_5828",
+        "toolret.toolACE_tool_4472",
+        "toolret.toolACE_tool_3686"
+      ]
+    },
+    {
+      "id": "appbench_query_1",
+      "query": "I would like to reserve 4 tickets for the event \"Jamaica\" on March 2nd in New York, and also book a bus ticket for 4 passengers departing from Philadelphia to New York on March 1st at 9 am without additional luggage.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_8",
+        "toolret.appbench_tool_5",
+        "toolret.appbench_tool_6"
+      ],
+      "returned_skill_ids": [
+        "toolret.reversechain_tool_347",
+        "toolret.ultraTool_tool_518",
+        "toolret.appbench_tool_6",
+        "toolret.appbench_tool_5",
+        "toolret.appbench_tool_28",
+        "toolret.reversechain_tool_54",
+        "toolret.ultraTool_tool_675",
+        "toolret.ultraTool_tool_510",
+        "toolret.ultraTool_tool_603",
+        "toolret.ultraTool_tool_719"
+      ]
+    },
+    {
+      "id": "appbench_query_2",
+      "query": "Initiate a private transfer of $93 to Wilson from my credit card, then find an Asian Fusion restaurant in San Jose with a moderate price range, reserve a table for 4 at 11:30 am on March 3rd at the selected restaurant, and confirm the reservation.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_21",
+        "toolret.appbench_tool_23",
+        "toolret.appbench_tool_22"
+      ],
+      "returned_skill_ids": [
+        "toolret.toolACE_tool_11592",
+        "toolret.appbench_tool_22",
+        "toolret.appbench_tool_21",
+        "toolret.appbench_tool_20",
+        "toolret.toolACE_tool_9872",
+        "toolret.toolACE_tool_14675",
+        "toolret.toolACE_tool_14697",
+        "toolret.toolACE_tool_11589",
+        "toolret.toolACE_tool_12263",
+        "toolret.ultraTool_tool_897"
+      ]
+    },
+    {
+      "id": "appbench_query_3",
+      "query": "Book one IMAX ticket for IT Chapter Two at Century Blackhawk Plaza in Danville for the show on March 3rd at 10:30 pm.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_13",
+        "toolret.appbench_tool_15"
+      ],
+      "returned_skill_ids": [
+        "toolret.appbench_tool_15",
+        "toolret.reversechain_tool_25",
+        "toolret.reversechain_tool_14",
+        "toolret.reversechain_tool_416",
+        "toolret.toolACE_tool_12139",
+        "toolret.appbench_tool_16",
+        "toolret.ultraTool_tool_518",
+        "toolret.reversechain_tool_408",
+        "toolret.reversechain_tool_523",
+        "toolret.reversechain_tool_158"
+      ]
+    },
+    {
+      "id": "appbench_query_4",
+      "query": "Find me a round trip flight from Las Vegas to Los Angeles departing on March 4th and returning on March 10th.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_10",
+        "toolret.appbench_tool_15"
+      ],
+      "returned_skill_ids": [
+        "toolret.appbench_tool_10",
+        "toolret.appbench_tool_9",
+        "toolret.toolbench_tool_2484",
+        "toolret.taskbench_daily_tool_3",
+        "toolret.toolACE_tool_5605",
+        "toolret.toolACE_tool_13061",
+        "toolret.reversechain_tool_386",
+        "toolret.toolACE_tool_8329",
+        "toolret.toolbench_tool_11390",
+        "toolret.ultraTool_tool_675"
+      ]
+    },
+    {
+      "id": "appbench_query_7",
+      "query": "Book a SUV car rental without insurance from Downtown Station in Long Beach on March 7th at 12:00 pm, returning on March 12th, and also purchase 1 ticket to Knives In Hens event in Toronto on March 11th.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_2",
+        "toolret.appbench_tool_8",
+        "toolret.appbench_tool_3"
+      ],
+      "returned_skill_ids": [
+        "toolret.appbench_tool_2",
+        "toolret.appbench_tool_3",
+        "toolret.ultraTool_tool_451",
+        "toolret.ultraTool_tool_708",
+        "toolret.toolACE_tool_1457",
+        "toolret.ultraTool_tool_439",
+        "toolret.toolACE_tool_9036",
+        "toolret.toolbench_tool_12621",
+        "toolret.ultraTool_tool_734",
+        "toolret.taskbench_daily_tool_6"
+      ]
+    },
+    {
+      "id": "appbench_query_8",
+      "query": "Book a one-way flight from Las Vegas to Sydney for four tickets on March 1st, and a bus trip from Sacramento to Los Angeles on March 2nd. Also, I am looking for a house in Delhi for two adults with a rating of at least 4.60. Furthermore, I need a one-way flight from Paris to Los Angeles on March 12th, and a train in Business class from Anaheim to San Diego on March 14th. Lastly, I want to book a one-way flight from Washington to San Francisco in Economy class for four tickets on March 13th.",
+      "category": "customized",
+      "expected_skill_ids": [
+        "toolret.appbench_tool_29",
+        "toolret.appbench_tool_1",
+        "toolret.appbench_tool_9",
+        "toolret.appbench_tool_5"
+      ],
+      "returned_skill_ids": [
+        "toolret.appbench_tool_9",
+        "toolret.ultraTool_tool_761",
+        "toolret.toolACE_tool_6098",
+        "toolret.toolACE_tool_12388",
+        "toolret.ultraTool_tool_328",
+        "toolret.toolACE_tool_10390",
+        "toolret.toolACE_tool_8994",
+        "toolret.ultraTool_tool_700",
+        "toolret.toolACE_tool_5370",
+        "toolret.toolACE_tool_3163"
+      ]
+    }
+  ]
+}

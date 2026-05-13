@@ -31,6 +31,18 @@ Executable skill invocation is planned but not implemented yet.
 uv sync
 ```
 
+Install optional embedding dependencies for the machine you are on:
+
+```powershell
+# CPU-only machines
+uv sync --extra cpu
+
+# NVIDIA GPU machines on Windows/Linux
+uv sync --extra cu128
+```
+
+The `cpu` and `cu128` extras are mutually exclusive. The CUDA extra uses PyTorch's CUDA 12.8 wheel index on Windows/Linux; macOS falls back to the standard PyPI wheel.
+
 ## CLI
 
 Validate local skills:
@@ -115,6 +127,11 @@ top_k = 10
 category = "all"
 use_instruction = true
 baseline = "hybrid"
+first_stage_model = "BAAI/bge-base-en-v1.5"
+first_stage_backend = "auto"
+embed_batch_size = 8
+embed_max_length = 512
+embed_device = ""
 candidate_pool_size = 100
 rankgpt_window_size = 20
 rankgpt_step_size = 10
@@ -138,7 +155,15 @@ uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools 
 
 This comparison uses `SkillSpec`-derived tool documents for both sides. The hybrid side uses `SkillSearcher`; the LLM side uses the provided first-stage candidates followed by RankGPT-style reranking with the configured LLM.
 
-Build those NV-Embed-v1 first-stage candidates from the same `SkillSpec` representation:
+Build practical local first-stage candidates from the same `SkillSpec` representation:
+
+```powershell
+uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --output path/to/bge_candidates.jsonl --top-k 100 --model BAAI/bge-base-en-v1.5 --embedding-backend hf-transformers --max-length 512
+```
+
+This local-friendly path uses a standard Hugging Face encoder with mean pooling and writes the same candidate JSONL format consumed by `--first-stage-candidates`. It is not the ToolRet paper's NV-Embed-v1 first stage, but it is practical on consumer GPUs and useful for local comparisons.
+
+Build paper-faithful NV-Embed-v1 first-stage candidates from the same `SkillSpec` representation:
 
 ```powershell
 uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --output path/to/nv_embed_candidates.jsonl --top-k 100 --model nvidia/NV-Embed-v1

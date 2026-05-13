@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -167,9 +168,17 @@ def build_toolret_first_stage_candidates(
 ) -> ToolRetCandidateBuildResult:
     if top_k <= 0:
         raise ValueError("Candidate top_k must be positive")
+    started = time.perf_counter()
+    _log_progress(
+        f"Building ToolRet first-stage candidates: {len(examples)} queries, "
+        f"{len(skills)} tools, top_k={top_k}, model={embedder.model_name}"
+    )
     candidate_docs = [_toolret_candidate_doc(skill) for skill in skills]
+    _log_progress(f"Embedding {len(candidate_docs)} tool documents")
     passage_embeddings = embedder.embed_passages([doc.documentation for doc in candidate_docs])
+    _log_progress(f"Embedding {len(examples)} queries")
     query_embeddings = embedder.embed_queries(examples, use_instruction=use_instruction)
+    _log_progress("Scoring query/document similarities")
     score_rows = _top_k_embedding_scores(query_embeddings, passage_embeddings, top_k)
     output: dict[str, list[dict[str, Any]]] = {}
     for example, ranked in zip(examples, score_rows):
@@ -178,6 +187,9 @@ def build_toolret_first_stage_candidates(
             for index, score in ranked
         ]
     write_toolret_first_stage_candidates(output_path, output)
+    _log_progress(
+        f"Wrote candidates to {output_path} in {round(time.perf_counter() - started, 1)}s"
+    )
     return ToolRetCandidateBuildResult(
         query_count=len(examples),
         tool_count=len(skills),
@@ -203,6 +215,8 @@ class NVEmbedV1Embedder(TextEmbedder):
         try:
             import torch  # type: ignore[import-not-found]
             import torch.nn.functional as torch_functional  # type: ignore[import-not-found]
+            _patch_numpy2_compat()
+            _disable_optional_transformers_dependencies()
             from transformers import AutoModel  # type: ignore[import-not-found]
         except ImportError as exc:
             raise ValueError(
@@ -212,6 +226,7 @@ class NVEmbedV1Embedder(TextEmbedder):
         self._torch = torch
         self._torch_functional = torch_functional
         try:
+            _log_progress(f"Loading NV-Embed model {model_name}")
             self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
         except Exception as exc:
             raise ValueError(
@@ -220,6 +235,9 @@ class NVEmbedV1Embedder(TextEmbedder):
             ) from exc
         if device:
             self.model.to(device)
+            _log_progress(f"NV-Embed model moved to device={device}")
+        else:
+            _log_progress("NV-Embed model loaded without explicit device override")
         self.model.eval()
 
     def embed_queries(self, examples: list[ToolRetQueryExample], *, use_instruction: bool) -> Any:
@@ -254,6 +272,83 @@ class NVEmbedV1Embedder(TextEmbedder):
 
     def _empty_embedding(self) -> Any:
         return self._torch.empty((0, 0))
+
+
+class HFTransformersEmbedder(TextEmbedder):
+    """Small-model embedding backend for local first-stage ToolRet candidates."""
+
+    def __init__(
+        self,
+        *,
+        model_name: str = "BAAI/bge-base-en-v1.5",
+        batch_size: int = 8,
+        max_length: int = 512,
+        device: str | None = None,
+    ):
+        self.model_name = model_name
+        self.batch_size = batch_size
+        self.max_length = max_length
+        try:
+            import torch  # type: ignore[import-not-found]
+            import torch.nn.functional as torch_functional  # type: ignore[import-not-found]
+            _patch_numpy2_compat()
+            _disable_optional_transformers_dependencies()
+            from transformers import AutoModel, AutoTokenizer  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise ValueError(
+                "HF embedding candidate generation requires torch and transformers. "
+                "Install them in this environment before running build-toolret-candidates."
+            ) from exc
+        self._torch = torch
+        self._torch_functional = torch_functional
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        try:
+            _log_progress(f"Loading tokenizer for embedding model {model_name}")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            _log_progress(f"Loading embedding model {model_name}")
+            self.model = AutoModel.from_pretrained(model_name)
+        except Exception as exc:
+            raise ValueError(f"Could not load embedding model {model_name}: {exc}") from exc
+        self.model.to(self.device)
+        self.model.eval()
+        cuda_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "unavailable"
+        _log_progress(
+            f"Embedding model ready on device={self.device}; "
+            f"cuda_available={torch.cuda.is_available()}; cuda_device={cuda_name}"
+        )
+
+    def embed_queries(self, examples: list[ToolRetQueryExample], *, use_instruction: bool) -> Any:
+        return self._encode([_hf_transformers_query_text(example, use_instruction) for example in examples])
+
+    def embed_passages(self, passages: list[str]) -> Any:
+        return self._encode(passages)
+
+    def _encode(self, texts: list[str]) -> Any:
+        if not texts:
+            return self._torch.empty((0, 0))
+        embeddings = []
+        total_batches = math.ceil(len(texts) / self.batch_size)
+        logger = _ProgressLogger(
+            total=total_batches,
+            label=f"Embedding {len(texts)} texts with batch_size={self.batch_size}",
+        )
+        with self._torch.no_grad():
+            for start in range(0, len(texts), self.batch_size):
+                batch = texts[start : start + self.batch_size]
+                encoded = self.tokenizer(
+                    batch,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                    return_tensors="pt",
+                )
+                encoded = {key: value.to(self.device) for key, value in encoded.items()}
+                output = self.model(**encoded)
+                pooled = _mean_pool_torch(output.last_hidden_state, encoded["attention_mask"], self._torch)
+                embeddings.append(self._torch_functional.normalize(pooled.float(), p=2, dim=1).cpu())
+                logger.step()
+        logger.finish()
+        return self._torch.cat(embeddings, dim=0)
 
 
 def toolret_tool_to_skill(row: dict[str, Any]) -> SkillSpec:
@@ -844,6 +939,7 @@ def _top_k_embedding_scores(query_embeddings: Any, passage_embeddings: Any, top_
     if hasattr(query_embeddings, "matmul") and hasattr(passage_embeddings, "T"):
         k = min(top_k, int(passage_embeddings.shape[0]))
         rows: list[list[tuple[int, float]]] = []
+        logger = _ProgressLogger(total=len(query_embeddings), label="Scoring queries")
         for query_embedding in query_embeddings:
             scores = query_embedding.matmul(passage_embeddings.T)
             values, indexes = scores.topk(k)
@@ -853,17 +949,22 @@ def _top_k_embedding_scores(query_embeddings: Any, passage_embeddings: Any, top_
                     for index, value in zip(indexes.tolist(), values.tolist())
                 ]
             )
+            logger.step()
+        logger.finish()
         return rows
 
     query_rows = _embedding_rows(query_embeddings)
     passage_rows = _embedding_rows(passage_embeddings)
     rows = []
+    logger = _ProgressLogger(total=len(query_rows), label="Scoring queries")
     for query_row in query_rows:
         scored = [
             (index, _dot_product(query_row, passage_row))
             for index, passage_row in enumerate(passage_rows)
         ]
         rows.append(sorted(scored, key=lambda item: item[1], reverse=True)[:top_k])
+        logger.step()
+    logger.finish()
     return rows
 
 
@@ -881,6 +982,76 @@ def _nv_embed_instruction(example: ToolRetQueryExample, use_instruction: bool) -
     if use_instruction and example.instruction:
         return example.instruction
     return "Given a user query, retrieve the most useful tool documentation for solving the query"
+
+
+def _hf_transformers_query_text(example: ToolRetQueryExample, use_instruction: bool) -> str:
+    if use_instruction and example.instruction:
+        return f"{example.instruction}\n{example.query}"
+    return example.query
+
+
+def _mean_pool_torch(last_hidden_state: Any, attention_mask: Any, torch_module: Any) -> Any:
+    mask = attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
+    summed = torch_module.sum(last_hidden_state * mask, dim=1)
+    counts = torch_module.clamp(mask.sum(dim=1), min=1e-9)
+    return summed / counts
+
+
+class _ProgressLogger:
+    def __init__(self, *, total: int, label: str, min_interval_seconds: float = 15.0):
+        self.total = total
+        self.label = label
+        self.min_interval_seconds = min_interval_seconds
+        self.count = 0
+        self.started = time.perf_counter()
+        self.last_logged = self.started
+        _log_progress(f"{self.label}: started ({self.total} batches)")
+
+    def step(self) -> None:
+        self.count += 1
+        now = time.perf_counter()
+        if self.count == self.total or now - self.last_logged >= self.min_interval_seconds:
+            elapsed = now - self.started
+            rate = self.count / elapsed if elapsed > 0 else 0.0
+            remaining = (self.total - self.count) / rate if rate > 0 else 0.0
+            _log_progress(
+                f"{self.label}: {self.count}/{self.total} "
+                f"({round(self.count / self.total * 100, 1) if self.total else 100.0}%), "
+                f"elapsed={round(elapsed, 1)}s, eta={round(remaining, 1)}s"
+            )
+            self.last_logged = now
+
+    def finish(self) -> None:
+        elapsed = time.perf_counter() - self.started
+        _log_progress(f"{self.label}: finished {self.count}/{self.total} in {round(elapsed, 1)}s")
+
+
+def _log_progress(message: str) -> None:
+    print(f"[toolret] {message}", file=sys.stderr, flush=True)
+
+
+def _patch_numpy2_compat() -> None:
+    try:
+        import numpy as np  # type: ignore[import-not-found]
+    except Exception:
+        return
+    if not hasattr(np, "Inf"):
+        np.Inf = np.inf  # type: ignore[attr-defined]
+    if not hasattr(np, "asfarray"):
+        np.asfarray = lambda value, dtype=float: np.asarray(value, dtype=dtype)  # type: ignore[attr-defined]
+
+
+def _disable_optional_transformers_dependencies() -> None:
+    try:
+        import transformers.utils.import_utils as import_utils  # type: ignore[import-not-found]
+    except Exception:
+        return
+    if hasattr(import_utils, "_sklearn_available"):
+        import_utils._sklearn_available = False
+    if hasattr(import_utils, "_accelerate_available"):
+        import_utils._accelerate_available = False
+    if hasattr(import_utils, "_scipy_available"):
+        import_utils._scipy_available = False
 
 
 def _candidate_mapping_from_dict(data: dict[str, Any]) -> dict[str, list[str]]:

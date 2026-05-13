@@ -108,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_toolret_candidates.add_argument("--queries", required=True, help="ToolRet query JSONL/JSON/parquet export")
     build_toolret_candidates.add_argument("--tools", required=True, help="ToolRet tool JSONL/JSON/parquet export")
     build_toolret_candidates.add_argument("--output", required=True, help="Path to write candidate JSONL")
+    build_toolret_candidates.add_argument("--config", default="config.toml", help="TOML config file for defaults")
     build_toolret_candidates.add_argument("--subset", help="Optional ToolRet subset filter, e.g. apibank")
     build_toolret_candidates.add_argument("--category", choices=["all", "web", "code", "customized"], default="all")
     build_toolret_candidates.add_argument("--limit", type=int)
@@ -116,9 +117,10 @@ def build_parser() -> argparse.ArgumentParser:
     build_candidates_instruction_group.add_argument("--use-instruction", dest="use_instruction", action="store_true")
     build_candidates_instruction_group.add_argument("--no-instruction", dest="use_instruction", action="store_false")
     build_toolret_candidates.set_defaults(use_instruction=True)
-    build_toolret_candidates.add_argument("--model", default="nvidia/NV-Embed-v1")
-    build_toolret_candidates.add_argument("--batch-size", type=int, default=8)
-    build_toolret_candidates.add_argument("--max-length", type=int, default=4096)
+    build_toolret_candidates.add_argument("--model")
+    build_toolret_candidates.add_argument("--embedding-backend", choices=["auto", "nv-embed", "hf-transformers"])
+    build_toolret_candidates.add_argument("--batch-size", type=int)
+    build_toolret_candidates.add_argument("--max-length", type=int)
     build_toolret_candidates.add_argument("--device", help="Optional torch device, e.g. cuda:0 or cpu")
 
     return parser

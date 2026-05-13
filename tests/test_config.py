@@ -34,6 +34,11 @@ top_k = 10
 use_instruction = true
 baseline = "rankgpt"
 llm = "mock"
+first_stage_model = "BAAI/bge-small-en-v1.5"
+first_stage_backend = "hf-transformers"
+embed_batch_size = 4
+embed_max_length = 256
+embed_device = "cpu"
 candidate_pool_size = 100
 rankgpt_window_size = 20
 rankgpt_step_size = 10
@@ -57,6 +62,11 @@ output = "toolret-result.json"
     assert config.toolret.first_stage_candidates == "tests/fixtures/toolret_candidates.jsonl"
     assert config.toolret.category == "web"
     assert config.toolret.baseline == "rankgpt"
+    assert config.toolret.first_stage_model == "BAAI/bge-small-en-v1.5"
+    assert config.toolret.first_stage_backend == "hf-transformers"
+    assert config.toolret.embed_batch_size == 4
+    assert config.toolret.embed_max_length == 256
+    assert config.toolret.embed_device == "cpu"
     assert config.toolret.candidate_pool_size == 100
     assert config.toolret.rankgpt_window_size == 20
     assert config.toolret.rankgpt_step_size == 10

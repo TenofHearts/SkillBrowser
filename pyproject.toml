@@ -4,13 +4,22 @@ version = "0.1.0"
 description = "Local skill search and reading MVP"
 requires-python = ">=3.9"
 dependencies = [
-    "accelerate>=1.10.1",
     "datasets>=4.5.0",
-    "einops>=0.8.2",
     "pydantic>=1.10,<2",
     "PyYAML>=6.0",
-    "torch>=2.8.0",
     "transformers==4.51.3",
+]
+
+[project.optional-dependencies]
+cpu = [
+    "accelerate>=1.10.1",
+    "einops>=0.8.2",
+    "torch==2.8.0",
+]
+cu128 = [
+    "accelerate>=1.10.1",
+    "einops>=0.8.2",
+    "torch==2.8.0",
 ]
 
 [dependency-groups]
@@ -32,3 +41,27 @@ sources = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu128" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
