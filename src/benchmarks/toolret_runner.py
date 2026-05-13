@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Callable
 
 from config import load_app_config_if_exists
-from core.search import SkillSearcher
+from core.embeddings import build_embedder
+from core.search import SearchWeights, SkillSearcher
 from llm import LLMClient
 
 from .toolret import (
@@ -124,7 +125,7 @@ def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):
 
     examples = load_toolret_queries(queries, category=category, subset=subset, limit=limit)
     tool_skills = load_toolret_tools(tools)
-    searcher = SkillSearcher(tool_skills)
+    searcher = _build_skill_searcher(tool_skills, args, config)
 
     if baseline == "hybrid":
         result = evaluate_toolret_retrieval(
@@ -154,6 +155,65 @@ def run_eval_toolret(args: argparse.Namespace, build_llm: BuildLLM):
     if output:
         Path(output).write_text(result.json(indent=2), encoding="utf-8")
     return result
+
+
+def _build_skill_searcher(tool_skills, args: argparse.Namespace, config):
+    embedding_config = config.embedding
+    mode = getattr(args, "retrieval_mode", None)
+    backend = getattr(args, "embedding_backend", None) or embedding_config.backend
+    dense_enabled = embedding_config.enabled and backend != "none"
+
+    if mode == "bm25":
+        dense_enabled = False
+        backend = "none"
+        bm25_enabled = True
+        sparse_view_enabled = False
+    elif mode == "dense":
+        dense_enabled = True
+        if backend == "none":
+            backend = "hf-transformers"
+        bm25_enabled = False
+        sparse_view_enabled = False
+    elif mode == "hybrid":
+        dense_enabled = backend != "none"
+        bm25_enabled = True
+        sparse_view_enabled = True
+    else:
+        bm25_enabled = True
+        sparse_view_enabled = True
+
+    embedder = build_embedder(
+        backend,
+        model_name=getattr(args, "embedding_model", None) or embedding_config.model,
+        batch_size=getattr(args, "embedding_batch_size", None) or embedding_config.batch_size,
+        max_length=getattr(args, "embedding_max_length", None) or embedding_config.max_length,
+        device=getattr(args, "embedding_device", None) or embedding_config.device,
+    )
+    return SkillSearcher(
+        tool_skills,
+        embedder=embedder,
+        dense_enabled=dense_enabled,
+        bm25_enabled=bm25_enabled,
+        sparse_view_enabled=sparse_view_enabled,
+        dense_view_names={"description"},
+        weights=_build_search_weights(args),
+        dense_cache_dir=args.embedding_cache_dir or "data/eval/toolret/embedding_cache",
+    )
+
+
+def _build_search_weights(args: argparse.Namespace) -> SearchWeights:
+    defaults = SearchWeights()
+    return SearchWeights(
+        lexical=args.weight_lexical if args.weight_lexical is not None else defaults.lexical,
+        sparse_view=args.weight_sparse_view if args.weight_sparse_view is not None else defaults.sparse_view,
+        dense=args.weight_dense if args.weight_dense is not None else defaults.dense,
+        rrf=args.weight_rrf if args.weight_rrf is not None else defaults.rrf,
+        capability=args.weight_capability if args.weight_capability is not None else defaults.capability,
+        usage=args.weight_usage if args.weight_usage is not None else defaults.usage,
+        input_type=args.weight_input_type if args.weight_input_type is not None else defaults.input_type,
+        output_type=args.weight_output_type if args.weight_output_type is not None else defaults.output_type,
+        penalty=args.weight_penalty if args.weight_penalty is not None else defaults.penalty,
+    )
 
 
 def _run_llm_toolret_eval(

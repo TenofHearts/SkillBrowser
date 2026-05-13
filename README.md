@@ -14,7 +14,7 @@ Executable skill invocation is planned but not implemented yet.
 
 - Load and validate local skill specs from `data/skills`.
 - Parse Markdown skill documents into named sections.
-- Search skills with an in-memory dependency-light hybrid scorer: BM25, per-view token-vector cosine ranking, reciprocal-rank fusion, and request capability/type hints.
+- Search skills with an in-memory hybrid scorer: BM25 sparse retrieval, optional learned dense embeddings over per-view skill text, reciprocal-rank fusion, and request capability/type hints.
 - Read a full skill document or a specific section with a token budget.
 - Build a SQLite registry containing skills, documents, sections, and generated search views.
 - Run small retrieval, local hard-query, and ToolRet evaluation datasets.
@@ -57,11 +57,32 @@ Build the SQLite registry:
 uv run skill-agent build-index --skill-dir data/skills --index-dir data/indexes
 ```
 
+Build the registry and persist dense view vectors:
+
+```powershell
+uv run skill-agent build-index --skill-dir data/skills --index-dir data/indexes --retrieval-mode hybrid --embedding-backend hf-transformers
+```
+
 Search skills:
 
 ```powershell
 uv run skill-agent search "extract text from a pdf" --top-k 5 --skill-dir data/skills
 ```
+
+Compare retrieval modes:
+
+```powershell
+# BM25-only sparse baseline
+uv run skill-agent search "extract text from a pdf" --top-k 5 --retrieval-mode bm25
+
+# Dense-only with a local Hugging Face encoder
+uv run skill-agent search "extract text from a pdf" --top-k 5 --retrieval-mode dense --embedding-backend hf-transformers
+
+# Hybrid BM25 + dense retrieval
+uv run skill-agent search "extract text from a pdf" --top-k 5 --retrieval-mode hybrid --embedding-backend hf-transformers
+```
+
+For fast tests or smoke checks, `--embedding-backend fake` uses a deterministic local fake embedder. It is not a real retrieval model.
 
 Programmatic search requests also accept optional context fields while remaining compatible with the CLI shape:
 
@@ -85,6 +106,12 @@ Run retrieval evaluation:
 
 ```powershell
 uv run skill-agent eval-retrieval --skill-dir tests/fixtures/skills --dataset tests/fixtures/retrieval_eval.jsonl --top-k 1
+```
+
+The same retrieval flags work for evaluation:
+
+```powershell
+uv run skill-agent eval-retrieval --skill-dir data/skills --dataset data/eval/local_hard_retrieval.jsonl --top-k 3 --retrieval-mode hybrid --embedding-backend hf-transformers
 ```
 
 Run the local hard-query retrieval benchmark:
@@ -118,6 +145,14 @@ uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools 
 The ToolRet command evaluates `SkillSearcher` directly, not the LLM agent. JSONL and JSON exports work without extra dependencies; parquet exports require `pandas` with a parquet engine such as `pyarrow`.
 
 ```toml
+[embedding]
+enabled = false
+backend = "none"
+model = "BAAI/bge-small-en-v1.5"
+batch_size = 8
+max_length = 512
+device = ""
+
 [toolret]
 queries = "path/to/toolret_queries.jsonl"
 tools = "path/to/toolret_tools.jsonl"
@@ -182,8 +217,8 @@ uv run pytest -q
 The project is in an early MVP state:
 
 - Milestone 1 is mostly complete: schema, loader, Markdown reader, SQLite registry, and validation tests exist.
-- Milestone 2 is partial: multi-view text is generated and persisted, and in-memory BM25 plus token-vector view indexes exist; persistent BM25, FAISS/dense indexing, id maps, and reloadable index files are not implemented.
-- Milestone 3 is partial: search returns ranked skill cards from BM25/vector RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, learned dense retrieval, reranking, and search logs are not implemented.
+- Milestone 2 is partial: multi-view text is generated and persisted, and in-memory BM25 plus optional dense view embeddings exist; persistent BM25, FAISS indexing, id maps, and reloadable vector files are not implemented.
+- Milestone 3 is partial: search returns ranked skill cards from BM25, sparse-view, and optional dense RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, reranking, and search logs are not implemented.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
 - Milestone 5 now has an initial LLM-backed agent loop for search/read/final-answer workflows.
 - Milestone 6 has retrieval and ToolRet benchmark adapters.

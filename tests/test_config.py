@@ -23,6 +23,14 @@ top_k = 3
 max_steps = 4
 read_max_tokens = 1000
 
+[embedding]
+enabled = true
+backend = "fake"
+model = "BAAI/bge-small-en-v1.5"
+batch_size = 2
+max_length = 128
+device = "cpu"
+
 [toolret]
 queries = "tests/fixtures/toolret_queries.jsonl"
 tools = "tests/fixtures/toolret_tools.jsonl"
@@ -57,6 +65,12 @@ output = "toolret-result.json"
     assert config.llm.max_tokens == 2048
     assert config.llm.timeout == 30.0
     assert config.agent.top_k == 3
+    assert config.embedding.enabled is True
+    assert config.embedding.backend == "fake"
+    assert config.embedding.model == "BAAI/bge-small-en-v1.5"
+    assert config.embedding.batch_size == 2
+    assert config.embedding.max_length == 128
+    assert config.embedding.device == "cpu"
     assert config.toolret.queries == "tests/fixtures/toolret_queries.jsonl"
     assert config.toolret.tools == "tests/fixtures/toolret_tools.jsonl"
     assert config.toolret.first_stage_candidates == "tests/fixtures/toolret_candidates.jsonl"

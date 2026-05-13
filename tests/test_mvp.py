@@ -12,10 +12,11 @@ from benchmarks.retrieval import (
     score_retrieval_result,
 )
 from cli import main
+from core.embeddings import FakeSemanticEmbedder
 from core.search import SkillSearcher, rrf_fusion
 from loader import SkillLoadError, load_skills
 from reader import SkillReader
-from registry import rebuild_registry, registry_summary
+from registry import persist_dense_embeddings, rebuild_registry, registry_summary
 from schema import SkillReadRequest, SkillSearchRequest
 
 
@@ -60,7 +61,47 @@ def test_multi_view_retrieval_uses_example_and_vector_rank_lists() -> None:
     response = SkillSearcher(skills).search(SkillSearchRequest(query="main contribution", top_k=1))
 
     assert response.results[0].id == "research.paper_claim_method_finding"
-    assert response.results[0].score_breakdown.vector > 0
+    assert response.results[0].score_breakdown.sparse_view > 0
+    assert response.results[0].score_breakdown.vector == 0
+    assert response.results[0].score_breakdown.rrf > 0
+
+
+def test_dense_retrieval_handles_semantic_query_without_keyword_overlap() -> None:
+    skills = load_skills(SKILL_DIR)
+    request = SkillSearchRequest(query="portable", top_k=1)
+
+    bm25_response = SkillSearcher(
+        skills,
+        bm25_enabled=True,
+        sparse_view_enabled=False,
+    ).search(request)
+    dense_response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+        bm25_enabled=False,
+        sparse_view_enabled=False,
+    ).search(request)
+
+    assert bm25_response.results == []
+    assert dense_response.results[0].id == "pdf.extract_text"
+    assert dense_response.results[0].score_breakdown.dense > 0
+    assert dense_response.results[0].score_breakdown.vector == dense_response.results[0].score_breakdown.dense
+    assert dense_response.results[0].score_breakdown.lexical == 0
+    assert dense_response.results[0].score_breakdown.sparse_view == 0
+
+
+def test_hybrid_combines_dense_and_sparse_rank_lists() -> None:
+    skills = load_skills(SKILL_DIR)
+    response = SkillSearcher(
+        skills,
+        embedder=FakeSemanticEmbedder(),
+        dense_enabled=True,
+    ).search(SkillSearchRequest(query="portable document", top_k=1))
+
+    assert response.results[0].id == "pdf.extract_text"
+    assert response.results[0].score_breakdown.dense > 0
+    assert response.results[0].score_breakdown.sparse_view > 0
     assert response.results[0].score_breakdown.rrf > 0
 
 
@@ -148,6 +189,32 @@ def test_registry_persists_skills_sections_and_views() -> None:
     assert summary["skill_documents"] == 2
     assert summary["skill_sections"] >= 8
     assert summary["skill_views"] >= 10
+
+
+def test_registry_persists_dense_embedding_metadata_and_files() -> None:
+    pytest.importorskip("_sqlite3")
+    skills = load_skills(SKILL_DIR)
+    db_dir = Path(__file__).parent / ".tmp"
+    db_dir.mkdir(exist_ok=True)
+    run_id = uuid4().hex
+    db_path = db_dir / f"skills-{run_id}.db"
+    index_dir = db_dir / f"indexes-{run_id}"
+
+    try:
+        rebuild_registry(skills, db_path)
+        result = persist_dense_embeddings(skills, db_path, index_dir, FakeSemanticEmbedder())
+        summary = registry_summary(db_path)
+    finally:
+        db_path.unlink(missing_ok=True)
+        (index_dir / "dense_views.jsonl").unlink(missing_ok=True)
+        (index_dir / "dense_views_id_map.json").unlink(missing_ok=True)
+        try:
+            index_dir.rmdir()
+        except OSError:
+            pass
+
+    assert result["embedding_count"] >= 10
+    assert summary["skill_embeddings"] == result["embedding_count"]
 
 
 def test_retrieval_evaluation_reports_metrics() -> None:

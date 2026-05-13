@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import argparse
 
-from core.search import SkillSearcher
 from schema import SkillSpec
 
 from .retrieval import evaluate_retrieval, load_retrieval_dataset
 
 
-def run_eval_retrieval(args: argparse.Namespace, skills: list[SkillSpec]):
+def run_eval_retrieval(args: argparse.Namespace, skills: list[SkillSpec], searcher):
     examples = load_retrieval_dataset(args.dataset)
-    return evaluate_retrieval(SkillSearcher(skills), examples, args.top_k)
+    return evaluate_retrieval(searcher, examples, args.top_k)

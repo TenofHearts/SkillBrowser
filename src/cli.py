@@ -13,11 +13,12 @@ from agent import SkillAgent
 from benchmarks.retrieval_runner import run_eval_retrieval
 from benchmarks.toolret_runner import run_build_toolret_candidates, run_eval_toolret
 from config import load_app_config, load_app_config_if_exists
-from core.search import SkillSearcher
+from core.embeddings import build_embedder
+from core.search import SearchWeights, SkillSearcher
 from loader import SkillLoadError, load_skills
 from llm import MockLLMClient, OpenAICompatibleLLMClient
 from reader import SkillReader
-from registry import default_db_path, dump_json_summary, rebuild_registry
+from registry import default_db_path, dump_json_summary, persist_dense_embeddings, rebuild_registry
 from schema import AgentRunRequest, SkillReadRequest, SkillSearchRequest
 
 
@@ -43,10 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     build_index = sub.add_parser("build-index", parents=[command_parent], help="Build the local SQLite skill registry")
     build_index.add_argument("--index-dir", default="data/indexes")
     build_index.add_argument("--db-path")
+    add_retrieval_arguments(build_index)
 
     search = sub.add_parser("search", parents=[command_parent], help="Search local skills")
     search.add_argument("query")
     search.add_argument("--top-k", type=int, default=5)
+    add_retrieval_arguments(search)
 
     run_agent = sub.add_parser("run-agent", parents=[command_parent], help="Run the LLM skill-selection agent")
     run_agent.add_argument("task")
@@ -66,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_retrieval.add_argument("--dataset", required=True)
     eval_retrieval.add_argument("--top-k", type=int, default=5)
+    add_retrieval_arguments(eval_retrieval)
 
     eval_toolret = sub.add_parser(
         "eval-toolret",
@@ -100,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="config.toml",
         help="TOML config file for defaults and openai-compatible LLM mode",
     )
+    add_retrieval_arguments(eval_toolret, include_config=False)
 
     build_toolret_candidates = sub.add_parser(
         "build-toolret-candidates",
@@ -146,16 +151,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build-index":
             db_path = Path(args.db_path) if args.db_path else default_db_path(args.index_dir)
             summary = rebuild_registry(skills, db_path)
+            if should_persist_embeddings(args):
+                embedder = build_configured_embedder(args, backend=resolved_embedding_backend(args))
+                summary.update(persist_dense_embeddings(skills, db_path, args.index_dir, embedder))
             print(dump_json_summary({"ok": True, "db_path": str(db_path), **summary}))
             return 0
         if args.command == "search":
-            print_json(SkillSearcher(skills).search(SkillSearchRequest(query=args.query, top_k=args.top_k)))
+            print_json(build_searcher(skills, args).search(SkillSearchRequest(query=args.query, top_k=args.top_k)))
             return 0
         if args.command == "run-agent":
             config = load_app_config_if_exists(args.config)
             llm_mode = args.llm or config.agent.llm
             llm = build_llm(llm_mode, args.config)
-            result = SkillAgent(SkillSearcher(skills), SkillReader(skills), llm).run(
+            result = SkillAgent(build_searcher(skills, args), SkillReader(skills), llm).run(
                 AgentRunRequest(
                     task=args.task,
                     top_k=args.top_k if args.top_k is not None else config.agent.top_k,
@@ -175,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "eval-retrieval":
-            print_json(run_eval_retrieval(args, skills))
+            print_json(run_eval_retrieval(args, skills, build_searcher(skills, args)))
             return 0
     except (SkillLoadError, ValidationError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -201,6 +209,131 @@ def build_llm(mode: str, config_path: str = "config.toml"):
             timeout=config.llm.timeout,
         )
     raise ValueError(f"Unsupported LLM mode: {mode}")
+
+
+def add_retrieval_arguments(parser: argparse.ArgumentParser, *, include_config: bool = True) -> None:
+    parser.add_argument(
+        "--retrieval-mode",
+        choices=["hybrid", "bm25", "dense"],
+        help="Search mode. Defaults to config embedding settings, or bm25 when embeddings are disabled.",
+    )
+    parser.add_argument("--embedding-backend", choices=["none", "fake", "hf-transformers"])
+    parser.add_argument("--embedding-model")
+    parser.add_argument("--embedding-batch-size", type=int)
+    parser.add_argument("--embedding-max-length", type=int)
+    parser.add_argument("--embedding-device")
+    parser.add_argument("--embedding-cache-dir")
+    parser.add_argument("--weight-lexical", type=float)
+    parser.add_argument("--weight-sparse-view", type=float)
+    parser.add_argument("--weight-dense", type=float)
+    parser.add_argument("--weight-rrf", type=float)
+    parser.add_argument("--weight-capability", type=float)
+    parser.add_argument("--weight-usage", type=float)
+    parser.add_argument("--weight-input-type", type=float)
+    parser.add_argument("--weight-output-type", type=float)
+    parser.add_argument("--weight-penalty", type=float)
+    if include_config:
+        parser.add_argument("--config", default="config.toml", help="TOML config file for retrieval defaults")
+
+
+def build_searcher(skills, args: argparse.Namespace) -> SkillSearcher:
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    embedding_config = config.embedding
+    mode = getattr(args, "retrieval_mode", None)
+    backend = resolved_embedding_backend(args)
+    dense_enabled = embedding_config.enabled and backend != "none"
+
+    if mode == "bm25":
+        dense_enabled = False
+        backend = "none"
+        bm25_enabled = True
+        sparse_view_enabled = False
+    elif mode == "dense":
+        dense_enabled = True
+        if backend == "none":
+            backend = "hf-transformers"
+        bm25_enabled = False
+        sparse_view_enabled = False
+    elif mode == "hybrid":
+        dense_enabled = backend != "none"
+        bm25_enabled = True
+        sparse_view_enabled = True
+    else:
+        bm25_enabled = True
+        sparse_view_enabled = True
+
+    embedder = build_configured_embedder(args, backend=backend)
+    return SkillSearcher(
+        skills,
+        embedder=embedder,
+        dense_enabled=dense_enabled,
+        bm25_enabled=bm25_enabled,
+        sparse_view_enabled=sparse_view_enabled,
+        weights=build_search_weights(args),
+        dense_cache_dir=getattr(args, "embedding_cache_dir", None),
+    )
+
+
+def build_configured_embedder(args: argparse.Namespace, backend: str | None = None):
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    embedding_config = config.embedding
+    return build_embedder(
+        backend or getattr(args, "embedding_backend", None) or embedding_config.backend,
+        model_name=getattr(args, "embedding_model", None) or embedding_config.model,
+        batch_size=getattr(args, "embedding_batch_size", None) or embedding_config.batch_size,
+        max_length=getattr(args, "embedding_max_length", None) or embedding_config.max_length,
+        device=getattr(args, "embedding_device", None) or embedding_config.device,
+    )
+
+
+def resolved_embedding_backend(args: argparse.Namespace) -> str:
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    backend = getattr(args, "embedding_backend", None) or config.embedding.backend
+    if getattr(args, "retrieval_mode", None) == "dense" and backend == "none":
+        return "hf-transformers"
+    return backend
+
+
+def should_persist_embeddings(args: argparse.Namespace) -> bool:
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    backend = resolved_embedding_backend(args)
+    mode = getattr(args, "retrieval_mode", None)
+    if mode == "dense":
+        return True
+    if mode == "hybrid":
+        return backend != "none"
+    return config.embedding.enabled and backend != "none"
+
+
+def build_search_weights(args: argparse.Namespace) -> SearchWeights:
+    defaults = SearchWeights()
+    return SearchWeights(
+        lexical=getattr(args, "weight_lexical", None) if getattr(args, "weight_lexical", None) is not None else defaults.lexical,
+        sparse_view=(
+            getattr(args, "weight_sparse_view", None)
+            if getattr(args, "weight_sparse_view", None) is not None
+            else defaults.sparse_view
+        ),
+        dense=getattr(args, "weight_dense", None) if getattr(args, "weight_dense", None) is not None else defaults.dense,
+        rrf=getattr(args, "weight_rrf", None) if getattr(args, "weight_rrf", None) is not None else defaults.rrf,
+        capability=(
+            getattr(args, "weight_capability", None)
+            if getattr(args, "weight_capability", None) is not None
+            else defaults.capability
+        ),
+        usage=getattr(args, "weight_usage", None) if getattr(args, "weight_usage", None) is not None else defaults.usage,
+        input_type=(
+            getattr(args, "weight_input_type", None)
+            if getattr(args, "weight_input_type", None) is not None
+            else defaults.input_type
+        ),
+        output_type=(
+            getattr(args, "weight_output_type", None)
+            if getattr(args, "weight_output_type", None) is not None
+            else defaults.output_type
+        ),
+        penalty=getattr(args, "weight_penalty", None) if getattr(args, "weight_penalty", None) is not None else defaults.penalty,
+    )
 
 
 if __name__ == "__main__":

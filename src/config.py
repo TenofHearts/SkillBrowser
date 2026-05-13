@@ -12,6 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.1
 
 from pydantic import BaseModel
 
+from core.embeddings import DEFAULT_EMBEDDING_MODEL
 from llm import DEFAULT_OPENAI_COMPATIBLE_MODEL
 
 
@@ -29,6 +30,15 @@ class AgentConfig(BaseModel):
     top_k: int = 5
     max_steps: int = 5
     read_max_tokens: int = 2000
+
+
+class EmbeddingConfig(BaseModel):
+    enabled: bool = False
+    backend: str = "none"
+    model: str = DEFAULT_EMBEDDING_MODEL
+    batch_size: int = 8
+    max_length: int = 512
+    device: Optional[str] = None
 
 
 class ToolRetConfig(BaseModel):
@@ -57,6 +67,7 @@ class ToolRetConfig(BaseModel):
 class AppConfig(BaseModel):
     llm: Optional[LLMConfig] = None
     agent: AgentConfig = AgentConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
     toolret: ToolRetConfig = ToolRetConfig()
 
 

@@ -24,13 +24,14 @@ The target behavior is:
 1. A user provides a complex long-horizon task.
 2. The LLM performs planning and reasoning.
 3. When the LLM realizes that specialized capability or procedural knowledge is needed, it calls an internal framework tool named `skill_search`.
-4. `skill_search` performs hybrid search over a local skill library.
-5. The search tool returns a small set of relevant compact skill cards.
-6. The LLM selects the most relevant skill to inspect.
-7. The LLM reads the selected skill document by calling `skill_read`, loading relevant sections into context.
-8. The LLM applies the skill instructions during reasoning.
-9. If the selected skill explicitly declares an executable interface, the LLM may optionally invoke it through the `skill_invoke` interface.
-10. The framework records discovery, reading, application, optional invocation, and evaluation logs.
+4. As part of the `skill_search` call, the LLM extracts a structured retrieval intent from the current task state: task summary, required capabilities, input/output types, constraints, and negative intent signals.
+5. `skill_search` performs deterministic hybrid search, ranking, filtering, and abstention over the local skill library using that structured intent.
+6. The search tool returns either a small set of relevant compact skill cards or a deterministic no-suitable-skill result with an abstention reason.
+7. The LLM selects the most relevant returned skill to inspect, or revises the structured retrieval intent and searches again.
+8. The LLM reads the selected skill document by calling `skill_read`, loading relevant sections into context.
+9. The LLM applies the skill instructions during reasoning.
+10. If the selected skill explicitly declares an executable interface, the LLM may optionally invoke it through the `skill_invoke` interface.
+11. The framework records intent extraction, discovery, abstention decisions, reading, application, optional invocation, and evaluation logs.
 
 The core pipeline is:
 
@@ -89,13 +90,17 @@ LLM Agent Planner
   ↓
 Need specialized capability / procedural knowledge?
   ↓ yes
-Internal Tool Call: skill_search
+LLM extracts structured retrieval intent
   ↓
-Capability-Aware Hybrid Search
+Internal Tool Call: skill_search(intent)
+  ↓
+Deterministic Capability-Aware Hybrid Search
+  ↓
+Deterministic ranking, filtering, and abstention
   ↓
 Candidate Skill Cards
   ↓
-LLM selects skill to inspect
+LLM selects skill to inspect or revises intent and searches again
   ↓
 Internal Tool Call: skill_read
   ↓
@@ -111,7 +116,7 @@ LLM Continues Planning
 Final Answer / Artifact
 ```
 
-The search engine should not merely search for textually similar skills. It should search for skills that can satisfy the capability needs implied by the current task state.
+The search engine should not merely search for textually similar skills. The LLM should translate the current task state into a structured retrieval intent, and the deterministic search engine should use that intent to find skills that can satisfy the implied capability needs. The LLM provides the intent; the search engine owns ranking, filtering, and abstention.
 
 ---
 
@@ -246,7 +251,8 @@ skill-search-agent/
 │       │   └── build_index.py
 │       │
 │       ├── retrieval/
-│       │   ├── query_parser.py
+│       │   ├── intent_schema.py
+│       │   ├── search_request_builder.py
 │       │   ├── hybrid_search.py
 │       │   ├── fusion.py
 │       │   ├── filters.py
@@ -993,28 +999,34 @@ skill_read     — always available
 skill_invoke   — available only when agent.enable_skill_invoke = true in config
 ```
 
+The `skill_search` call is the point where the LLM agent converts a potentially long and messy natural-language task state into a structured retrieval intent. The LLM should not directly choose a skill ID. It should describe what capability is needed, what inputs and outputs are involved, and what the search should avoid. The deterministic search engine then ranks, filters, and abstains based on that structured request.
+
 ```json
 {
   "name": "skill_search",
-  "description": "Search the local skill library for skills that may help solve the current task or subtask. Skills may be instructional documents, workflows, recipes, references, prompt patterns, tool usage guides, executable tools, or hybrid skills.",
+  "description": "Extract structured retrieval intent from the current task state and search the local skill library for skills that may help solve the current task or subtask. Skills may be instructional documents, workflows, recipes, references, prompt patterns, tool usage guides, executable tools, or hybrid skills.",
   "parameters": {
     "type": "object",
     "required": ["query"],
     "properties": {
       "query": {
         "type": "string",
-        "description": "Natural language description of the capability or procedural knowledge needed."
+        "description": "Concise natural-language summary of the capability or procedural knowledge needed, rewritten from the current task state."
       },
       "task_context": {
         "type": "string",
         "description": "Relevant context from the current long-horizon task."
+      },
+      "intent_summary": {
+        "type": "string",
+        "description": "Short structured-intent summary explaining what the agent is trying to accomplish with this search."
       },
       "required_capabilities": {
         "type": "array",
         "items": {
           "type": "string"
         },
-        "description": "Specific capabilities that the agent believes are needed."
+        "description": "Specific capabilities inferred by the LLM from the task state, phrased as capability needs rather than skill IDs."
       },
       "input_types": {
         "type": "array",
@@ -1029,6 +1041,20 @@ skill_invoke   — available only when agent.enable_skill_invoke = true in confi
           "type": "string"
         },
         "description": "Desired output types, such as markdown, json, chart, docx, pptx, text, table, or file."
+      },
+      "constraints": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Relevant task constraints such as local-only, no network, preserve page order, max word count, target format, or safety constraints."
+      },
+      "negative_intents": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Capabilities, workflows, or interpretations that should be avoided because they do not match the user's intent."
       },
       "top_k": {
         "type": "integer",
@@ -1097,11 +1123,35 @@ Output schema:
 
 ## 11. Internal Tool Output Schema: `skill_search`
 
-The search tool should return compact skill cards that support both documentation-first and executable skills.
+The search tool should return compact skill cards that support both documentation-first and executable skills. It should also return the interpreted retrieval intent and deterministic abstention/debug signals so the agent can inspect why candidates were or were not returned.
 
 ```json
 {
   "query_id": "search_001",
+  "interpreted_intent": {
+    "query": "analyze a research paper by extracting claim, method, and findings",
+    "intent_summary": "The agent needs a workflow for structured academic paper analysis.",
+    "required_capabilities": [
+      "extract_claim",
+      "extract_method",
+      "extract_findings"
+    ],
+    "input_types": [
+      "academic_paper",
+      "paper_text"
+    ],
+    "output_types": [
+      "structured_text",
+      "markdown"
+    ],
+    "constraints": [],
+    "negative_intents": [
+      "translation",
+      "popular_science_summary"
+    ]
+  },
+  "abstained": false,
+  "abstention_reason": null,
   "candidates": [
     {
       "skill_id": "research.paper_claim_method_finding",
@@ -1141,6 +1191,10 @@ The search tool should return compact skill cards that support both documentatio
         "bm25": 0.71,
         "example": 0.82,
         "schema_match": 0.5,
+        "required_capability_match": 1.0,
+        "input_type_match": 1.0,
+        "output_type_match": 1.0,
+        "negative_intent_match": 0.0,
         "risk_penalty": 0.0,
         "dependency_missing_penalty": 0.0,
         "permission_penalty": 0.0
@@ -1194,6 +1248,10 @@ The search tool should return compact skill cards that support both documentatio
         "bm25": 0.65,
         "example": 0.78,
         "schema_match": 1.0,
+        "required_capability_match": 0.67,
+        "input_type_match": 1.0,
+        "output_type_match": 0.5,
+        "negative_intent_match": 0.0,
         "risk_penalty": 0.0,
         "dependency_missing_penalty": 0.0,
         "permission_penalty": 0.0
@@ -1201,11 +1259,64 @@ The search tool should return compact skill cards that support both documentatio
     }
   ],
   "missing_capabilities": [],
+  "negative_matches": [],
+  "hard_mismatches": [],
   "search_latency_ms": 37
 }
 ```
 
 For executable skills, `input_schema` and `output_schema` are included when available. For documentation-first skills, these fields are omitted.
+
+When no candidate satisfies the structured intent, the search engine should return an empty `candidates` list with `abstained: true` and a deterministic `abstention_reason`. The LLM should not decide abstention by itself; it should use the returned abstention reason to either continue without a skill or issue a revised `skill_search` request with a clearer structured intent.
+
+Example no-suitable-skill result:
+
+```json
+{
+  "query_id": "search_002",
+  "interpreted_intent": {
+    "query": "translate an academic paper into French",
+    "intent_summary": "The agent needs document translation from English to French.",
+    "required_capabilities": [
+      "translate_text",
+      "preserve_document_meaning"
+    ],
+    "input_types": [
+      "academic_paper",
+      "text"
+    ],
+    "output_types": [
+      "translated_text"
+    ],
+    "constraints": [
+      "target_language:french"
+    ],
+    "negative_intents": [
+      "paper_analysis",
+      "abstract_writing",
+      "claim_extraction"
+    ]
+  },
+  "abstained": true,
+  "abstention_reason": "No active skill matches required capability translate_text with output type translated_text.",
+  "candidates": [],
+  "missing_capabilities": [
+    "translate_text",
+    "preserve_document_meaning"
+  ],
+  "negative_matches": [
+    {
+      "skill_id": "research.paper_claim_method_finding",
+      "matched_negative_intent": "paper_analysis"
+    }
+  ],
+  "hard_mismatches": [
+    "required_capability_missing",
+    "output_type_mismatch"
+  ],
+  "search_latency_ms": 24
+}
+```
 
 `missing_capabilities` is computed as: the set of `required_capabilities` from the request that have no semantic match (cosine similarity below a threshold, e.g. 0.5) against any capability description of any retrieved candidate skill.
 
@@ -1285,19 +1396,22 @@ On failure:
 
 ## 14. Hybrid Search Design
 
-The search engine should implement multi-view retrieval.
+The search engine should implement multi-view retrieval over a structured retrieval intent. The LLM agent is responsible for extracting the intent when it calls `skill_search`; the search engine is responsible for deterministic retrieval, ranking, filtering, and abstention.
 
 ### 14.1 Search Inputs
 
-The search engine receives:
+The search engine receives an LLM-authored `SkillSearchRequest`. This request is not a direct skill-selection decision. It is an inspectable intent representation used by the deterministic search engine.
 
 ```python
 class SkillSearchRequest(BaseModel):
     query: str
     task_context: str | None = None
+    intent_summary: str | None = None
     required_capabilities: list[str] = []
     input_types: list[str] = []
     output_types: list[str] = []
+    constraints: list[str] = []
+    negative_intents: list[str] = []
     top_k: int = 5
 ```
 
@@ -1315,13 +1429,16 @@ capability_view:
   capability IDs + capability descriptions
 
 example_view:
-  positive examples + negative examples
+  positive examples
 
 schema_view:
   input schema + output schema + input/output types (optional, only if available)
 
 usage_rule_view:
-  when_to_use + when_not_to_use
+  when_to_use
+
+negative_intent_view:
+  negative examples + when_not_to_use + contraindications + failure modes
 
 content_section_view:
   skill document section headings + overview text (if available)
@@ -1340,22 +1457,25 @@ The retrieval pipeline has two stages: candidate generation via RRF, then re-sco
 **Stage 1: Candidate Generation**
 
 ```text
-1. Normalize query.
-2. Parse task context.
-3. Generate expanded search query (concatenate query + required_capabilities + input_types).
+1. Accept the LLM-authored structured retrieval intent from SkillSearchRequest.
+2. Normalize intent fields for retrieval only (case-folding, alias expansion, canonical type names).
+3. Generate expanded search text from query + intent_summary + required_capabilities + input_types + output_types + constraints.
 4. Apply metadata filters (status = active, exclude unavailable dependencies).
-5. Run BM25 retrieval over the single concatenated-text index → top recall_k results.
-6. Run dense vector retrieval over each view (description, capability, example, schema, usage_rule, content_section) → top recall_k results per view.
-7. Collect all rank lists (1 BM25 list + N dense view lists) and fuse into a single candidate pool using reciprocal rank fusion (§14.5).
-8. Take the top recall_k candidates from the fused list.
+5. Run BM25 retrieval over positive searchable views → top recall_k results.
+6. Run dense vector retrieval over positive views (description, capability, example, schema, usage_rule, content_section) → top recall_k results per view.
+7. Score negative_intents against negative_intent_view separately; do not use negative matches as positive candidate-generation evidence.
+8. Collect positive rank lists (BM25 + dense positive views) and fuse into a single candidate pool using reciprocal rank fusion (§14.5).
+9. Take the top recall_k candidates from the fused list.
 ```
 
 **Stage 2: Re-Scoring**
 
 ```text
-9.  For each candidate, compute the weighted re-score using the formula in §14.4.
-10. Rank candidates by final score.
-11. Return at most top_k compact skill cards with score >= minimum_score_threshold (default: 0.1).
+10. For each candidate, compute the weighted re-score using the formula in §14.4.
+11. Apply deterministic hard-mismatch checks for required capabilities, input types, output types, permissions, dependencies, and negative intent matches.
+12. Rank remaining candidates by final score.
+13. Return at most top_k compact skill cards with score >= minimum_score_threshold (default: 0.1).
+14. If no candidate satisfies the structured intent, return `abstained: true`, an empty candidate list, `missing_capabilities`, `hard_mismatches`, and an `abstention_reason`.
 ```
 
 ---
@@ -1371,12 +1491,19 @@ score(skill, request) =
   + 0.15 * bm25_score
   + 0.15 * example_score
   + 0.15 * schema_match_score
+  + 0.20 * required_capability_match_score
+  + 0.10 * input_type_match_score
+  + 0.10 * output_type_match_score
+  - 0.60 * negative_intent_penalty
+  - 0.40 * required_capability_mismatch_penalty
+  - 0.30 * input_type_mismatch_penalty
+  - 0.30 * output_type_mismatch_penalty
   - 0.20 * risk_penalty
   - 0.30 * dependency_missing_penalty
   - 0.20 * permission_penalty
 ```
 
-The positive weights sum to 1.0. Penalties are subtracted and can push the score below zero; candidates below `minimum_score_threshold` (default: 0.1) are discarded.
+The initial positive weights may sum above 1.0 because multiple structured-intent fields can provide independent positive evidence. Scores should be normalized after component scoring or calibrated empirically. Penalties are subtracted and can push the score below zero; candidates below `minimum_score_threshold` (default: 0.1) are discarded.
 
 The weights should be configurable in `configs/default.yaml`. The weights should be improved upon experiment.
 
@@ -1393,6 +1520,20 @@ All component scores must be normalized to [0, 1] before applying the weighted s
 **`example_score`**: Maximum cosine similarity between the embedded query and each of the skill's positive example `user_query` embeddings. If the skill has no positive examples, default to 0.0.
 
 **`schema_match_score`**: Set overlap between the request's `input_types`/`output_types` and the skill's declared `input_types`/`output_types`. Computed as: `(|request_input ∩ skill_input| + |request_output ∩ skill_output|) / (|request_input| + |request_output|)`. If the request specifies no types, default to 0.5 (neutral).
+
+**`required_capability_match_score`**: Semantic match between each requested capability and the skill's declared capabilities. If the request specifies no capabilities, default to 0.5 (neutral). If the request specifies capabilities and none match, this should contribute both low positive evidence and a mismatch penalty.
+
+**`input_type_match_score`**: Semantic or canonicalized type match between requested input types and skill input types. If the request specifies no input types, default to 0.5 (neutral).
+
+**`output_type_match_score`**: Semantic or canonicalized type match between requested output types and skill output types. If the request specifies no output types, default to 0.5 (neutral).
+
+**`negative_intent_penalty`**: Maximum semantic match between request `negative_intents` and the skill's `negative_intent_view`. A high value means the skill is likely related to something the agent explicitly wants to avoid.
+
+**`required_capability_mismatch_penalty`**: High when the request specifies required capabilities and the skill has no adequate capability match.
+
+**`input_type_mismatch_penalty`**: High when the request specifies concrete input types that the skill does not support.
+
+**`output_type_mismatch_penalty`**: High when the request specifies concrete output types that the skill does not produce.
 
 **`risk_penalty`**: 0.0 if `risk.level == "low"`, 0.5 if `"medium"`, 1.0 if `"high"`.
 
@@ -1418,6 +1559,8 @@ def rrf_fusion(rank_lists: list[list[str]], k: int = 60) -> dict[str, float]:
 ```
 
 The input `rank_lists` contains one list from BM25 retrieval and one list per dense view (description, capability, example, schema, usage_rule, content_section), for a total of 7 rank lists.
+
+The `negative_intent_view` is intentionally excluded from positive RRF candidate generation. It is used for penalties, hard mismatches, and abstention diagnostics.
 
 ---
 
@@ -1447,16 +1590,18 @@ A skill may be an instructional document, workflow, recipe, reference note,
 prompt pattern, tool usage guide, executable tool wrapper, or hybrid skill.
 
 When you need specialized capability or procedural knowledge:
-1. call skill_search to find relevant local skills;
-2. inspect the returned compact skill cards;
-3. call skill_read to read the most relevant skill document or section;
-4. apply the skill instructions in your reasoning;
-5. only call skill_invoke if the skill explicitly declares execution_available = true.
+1. extract a structured retrieval intent from the current task state;
+2. call skill_search with a concise query plus inferred capabilities, input/output types, constraints, and negative intents;
+3. inspect the returned compact skill cards or deterministic abstention reason;
+4. call skill_read to read the most relevant skill document or section;
+5. apply the skill instructions in your reasoning;
+6. only call skill_invoke if the skill explicitly declares execution_available = true.
 
 Do not invent skill IDs.
+Do not treat skill_search as a direct classifier from user query to skill ID.
 Do not assume a skill is executable unless its metadata says so.
 Prefer reading a skill before applying it.
-If no retrieved skill is suitable, search again with a better capability query.
+If skill_search abstains or no retrieved skill is suitable, either continue without a skill or search again with a revised structured retrieval intent.
 Select and read the minimal set of skills necessary for the task.
 ```
 
@@ -1610,11 +1755,14 @@ Implement:
 
 ```text
 SkillSearchRequest
+structured retrieval intent fields
 BM25 retrieval
 dense retrieval
 RRF fusion
 schema matching (optional, only when schema exists)
 capability matching
+deterministic abstention
+negative-intent penalties and hard mismatch detection
 risk/dependency filtering
 top-k skill card output with skill_type, interaction_mode, execution_available, and read_recommendation
 ```
@@ -1622,7 +1770,8 @@ top-k skill card output with skill_type, interaction_mode, execution_available, 
 Acceptance criteria:
 
 ```text
-- Given a query, returns ranked skill candidates.
+- Given an LLM-authored structured retrieval intent, returns ranked skill candidates.
+- Given an unsupported intent, returns a deterministic no-suitable-skill response with an abstention reason.
 - Output follows the updated skill_search response schema.
 - Documentation-first and executable skills are both returned correctly.
 - Search logs are stored in SQLite.
@@ -1663,6 +1812,7 @@ Implement:
 ```text
 agent loop
 tool specs for skill_search and skill_read
+LLM structured retrieval intent extraction before skill_search calls
 skill_search tool bridge
 skill_read tool bridge
 optional skill_invoke tool bridge (controlled by config flag)
@@ -1673,7 +1823,8 @@ Acceptance criteria:
 
 ```text
 - Agent can solve a task requiring skill reading and application.
-- Agent can search, read, and apply skill instructions.
+- Agent can infer structured retrieval intent, search, read, and apply skill instructions.
+- Agent can revise structured retrieval intent after an abstention or unsuitable result.
 - Agent does not see all skill descriptions upfront.
 - When agent.enable_skill_invoke = false, skill_invoke is not available.
 ```
@@ -1701,6 +1852,7 @@ Acceptance criteria:
 - Can run retrieval evaluation.
 - Can run read-selection evaluation.
 - Can compute Recall@k, MRR, nDCG@k, Correct Skill Read@k.
+- Can compute deterministic abstention metrics for unsupported intents.
 - Can compare BM25, dense, hybrid, and hybrid+rerank.
 ```
 
@@ -1738,26 +1890,33 @@ Use a staged validation strategy.
 
 ---
 
-## 19.1 Stage A: Retrieval-Only Evaluation
+## 19.1 Stage A: Skill Search and Deterministic Abstention Evaluation
 
 Primary benchmark:
 
 ```text
 ToolRet-style tool retrieval benchmark
+plus unsupported-intent / no-suitable-skill examples
 ```
 
 Purpose:
 
 ```text
-Evaluate whether the local hybrid search engine can retrieve the correct skill candidates from a large skill library.
+Evaluate end-to-end skill_search quality:
+  LLM-authored structured retrieval intent
+  + deterministic search ranking
+  + deterministic filtering and abstention
+
+Abstention is evaluated as behavior of the search algorithm, not as an LLM judgment.
 ```
 
 If directly adapting ToolRet:
 
 ```text
 ToolRet tool corpus → local skill specs
-ToolRet queries → skill_search requests
+ToolRet queries → LLM-authored or adapter-authored structured SkillSearchRequest objects
 Gold tools → gold skills
+Unsupported examples → gold empty result with required abstention
 ```
 
 Required adapter:
@@ -1784,6 +1943,12 @@ Recall@10
 MRR@10
 nDCG@10
 Precision@5
+False Positive Skill Return Rate
+False Abstention Rate
+Unsupported-Intent Detection Rate
+Missing-Capability Detection Rate
+Hard-Mismatch Detection Rate
+Irrelevant Candidate Rate
 Average search latency
 ```
 
@@ -1804,6 +1969,7 @@ Expected result:
 
 ```text
 Hybrid retrieval should outperform BM25-only and dense-only retrieval on Recall@5 and MRR@10.
+Deterministic abstention should reduce false positive skill returns on unsupported intents without significantly increasing false abstentions on supported intents.
 ```
 
 ---
@@ -2056,6 +2222,12 @@ Skill Read Precision
 Skill Read Recall
 Over-selection Rate
 Missing Skill Rate
+False Positive Skill Return Rate
+False Abstention Rate
+Unsupported-Intent Detection Rate
+Missing-Capability Detection Rate
+Hard-Mismatch Detection Rate
+Irrelevant Candidate Rate
 Oracle Read Gap
 Task Success Rate
 Average Prompt Tokens
@@ -2159,12 +2331,22 @@ retrieval:
   recall_k: 50
   rrf_k: 60
   minimum_score_threshold: 0.1
+  hard_abstention_on_required_capability_miss: true
+  hard_abstention_on_input_type_miss: true
+  hard_abstention_on_output_type_miss: false
   weights:
     dense_description: 0.30
     dense_capability: 0.25
     bm25: 0.15
     example: 0.15
     schema_match: 0.15
+    required_capability_match: 0.20
+    input_type_match: 0.10
+    output_type_match: 0.10
+    negative_intent_penalty: 0.60
+    required_capability_mismatch_penalty: 0.40
+    input_type_mismatch_penalty: 0.30
+    output_type_mismatch_penalty: 0.30
     risk_penalty: 0.20
     dependency_missing_penalty: 0.30
     permission_penalty: 0.20
@@ -2239,6 +2421,11 @@ test_eval_metrics.py
   - MRR@k
   - nDCG@k
   - Correct Skill Read@k
+  - False Positive Skill Return Rate
+  - False Abstention Rate
+  - Unsupported-Intent Detection Rate
+  - Missing-Capability Detection Rate
+  - Hard-Mismatch Detection Rate
 ```
 
 ---
@@ -2258,8 +2445,9 @@ The MVP is successful if:
 8. The agent can read selected skill documents or sections.
 9. The Skill Context Builder can load relevant skill content into the conversation.
 10. Retrieval and read-selection evaluation can produce Recall@k, MRR, and Correct Skill Read@k.
-11. Dynamic skill search + read can be compared against all-skill prompt loading.
-12. Results are logged in a reproducible format.
+11. Deterministic search abstention can be evaluated with false positive skill return, false abstention, unsupported-intent detection, and missing-capability detection metrics.
+12. Dynamic skill search + read can be compared against all-skill prompt loading.
+13. Results are logged in a reproducible format.
 ```
 
 ---
@@ -2305,6 +2493,18 @@ def summarize_text(text: str, max_words: int = 200) -> dict:
 
 Do not implement the system as a simple classifier from query to skill ID.
 
+Instead, use this pattern:
+
+```text
+complex task state
+  → LLM-authored structured retrieval intent
+  → deterministic retrieval, ranking, filtering, and abstention
+  → compact candidate cards or no-suitable-skill result
+  → LLM reads selected skill documents or revises the retrieval intent
+```
+
+The LLM may infer what capability is needed, but it must not directly select a hidden skill ID outside the returned candidates.
+
 Do not assume every skill is executable.
 
 Do not force documentation-first skills into function-call schemas.
@@ -2317,12 +2517,17 @@ The search engine must return:
 
 ```text
 candidate skills
+interpreted retrieval intent
 matched capabilities
 score breakdown
 skill_type and interaction_mode
 available_sections and read_recommendation
 input/output schema (only if available)
 usage constraints
+missing capabilities
+negative matches
+hard mismatches
+abstention status and reason when no suitable skill is found
 ```
 
 The LLM should make the final selection and reading decisions based on retrieved candidates.
@@ -2345,7 +2550,7 @@ MCP tool import
 After MVP:
 
 ```text
-1. Add LLM query rewriting before retrieval.
+1. Improve structured intent extraction prompts and schemas.
 2. Add cross-encoder reranker.
 3. Add skill graph planning.
 4. Add automatic skill composition.

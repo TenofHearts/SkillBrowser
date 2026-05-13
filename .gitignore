@@ -4,6 +4,12 @@ __pycache__/
 tests/.tmp/
 data/indexes/
 data/models/
+data/**/*.log
+data/**/logs/
+data/**/results/
+data/**/result*.json
+data/**/embedding_cache/
+data/**/*candidates*.jsonl
 .uv-cache/
 .venv/
 venv/

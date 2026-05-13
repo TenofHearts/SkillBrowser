@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.embeddings import TextEmbedder
 from core.sections import parse_markdown_sections, token_count
 from core.views import build_skill_views
 from loader import SkillLoadError, load_skill_document
 from schema import SkillSpec
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def default_db_path(index_dir: str | Path) -> Path:
@@ -83,6 +84,17 @@ def initialize_registry(conn: Any) -> None:
             PRIMARY KEY(skill_id, view_name),
             FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS skill_embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_id TEXT NOT NULL,
+            view_name TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            vector_index_name TEXT NOT NULL,
+            vector_position INTEGER NOT NULL,
+            source_text TEXT NOT NULL,
+            FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        );
         """
     )
     conn.execute(
@@ -97,6 +109,7 @@ def rebuild_registry(skills: list[SkillSpec], db_path: str | Path) -> dict[str, 
         conn.executescript(
             """
             DELETE FROM skill_views;
+            DELETE FROM skill_embeddings;
             DELETE FROM skill_sections;
             DELETE FROM skill_documents;
             DELETE FROM skills;
@@ -159,11 +172,64 @@ def rebuild_registry(skills: list[SkillSpec], db_path: str | Path) -> dict[str, 
         return {"skill_count": len(skills), "section_count": section_count, "view_count": view_count}
 
 
+def persist_dense_embeddings(
+    skills: list[SkillSpec],
+    db_path: str | Path,
+    index_dir: str | Path,
+    embedder: TextEmbedder,
+    *,
+    vector_index_name: str = "dense_views",
+) -> dict[str, int | str]:
+    index_path = Path(index_dir)
+    index_path.mkdir(parents=True, exist_ok=True)
+    vector_path = index_path / f"{vector_index_name}.jsonl"
+    id_map_path = index_path / f"{vector_index_name}_id_map.json"
+
+    view_rows = [view for skill in skills for view in build_skill_views(skill)]
+    vectors = embedder.embed_texts([view.text for view in view_rows])
+    id_map = []
+
+    with vector_path.open("w", encoding="utf-8") as vector_file, connect(db_path) as conn:
+        initialize_registry(conn)
+        conn.execute("DELETE FROM skill_embeddings WHERE vector_index_name = ?", (vector_index_name,))
+        for position, (view, vector) in enumerate(zip(view_rows, vectors)):
+            vector_file.write(
+                json.dumps(
+                    {
+                        "position": position,
+                        "skill_id": view.skill_id,
+                        "view_name": view.view_name,
+                        "vector": vector,
+                    }
+                )
+                + "\n"
+            )
+            id_map.append({"position": position, "skill_id": view.skill_id, "view_name": view.view_name})
+            conn.execute(
+                """
+                INSERT INTO skill_embeddings (
+                    skill_id, view_name, model_name, vector_index_name,
+                    vector_position, source_text
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (view.skill_id, view.view_name, embedder.model_name, vector_index_name, position, view.text),
+            )
+        conn.commit()
+
+    id_map_path.write_text(json.dumps(id_map, indent=2), encoding="utf-8")
+    return {
+        "embedding_count": len(view_rows),
+        "embedding_model": embedder.model_name,
+        "vector_path": str(vector_path),
+        "id_map_path": str(id_map_path),
+    }
+
+
 def registry_summary(db_path: str | Path) -> dict[str, int | str]:
     with connect(db_path) as conn:
         initialize_registry(conn)
         counts = {}
-        for table in ("skills", "skill_documents", "skill_sections", "skill_views"):
+        for table in ("skills", "skill_documents", "skill_sections", "skill_views", "skill_embeddings"):
             counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         version = conn.execute("SELECT value FROM registry_meta WHERE key = 'schema_version'").fetchone()
     return {"schema_version": version[0] if version else "", **counts}

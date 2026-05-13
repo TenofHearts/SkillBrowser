@@ -141,6 +141,8 @@ class ScoreBreakdown(BaseModel):
     lexical: float
     capability: float
     usage: float
+    sparse_view: float = 0.0
+    dense: float = 0.0
     vector: float = 0.0
     rrf: float = 0.0
     input_type: float = 0.0

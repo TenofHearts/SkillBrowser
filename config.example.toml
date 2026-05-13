@@ -12,6 +12,14 @@ top_k = 5
 max_steps = 5
 read_max_tokens = 2000
 
+[embedding]
+enabled = false
+backend = "none"
+model = "BAAI/bge-small-en-v1.5"
+batch_size = 8
+max_length = 512
+device = ""
+
 [toolret]
 queries = "tests/fixtures/toolret_queries.jsonl"
 tools = "tests/fixtures/toolret_tools.jsonl"
