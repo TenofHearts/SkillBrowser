@@ -239,7 +239,12 @@ def add_retrieval_arguments(parser: argparse.ArgumentParser, *, include_config: 
         parser.add_argument("--config", default="config.toml", help="TOML config file for retrieval defaults")
 
 
-def build_searcher(skills, args: argparse.Namespace) -> SkillSearcher:
+def build_searcher(
+    skills,
+    args: argparse.Namespace,
+    *,
+    dense_view_names: set[str] | None = None,
+) -> SkillSearcher:
     config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
     embedding_config = config.embedding
     mode = getattr(args, "retrieval_mode", None)
@@ -272,6 +277,7 @@ def build_searcher(skills, args: argparse.Namespace) -> SkillSearcher:
         dense_enabled=dense_enabled,
         bm25_enabled=bm25_enabled,
         sparse_view_enabled=sparse_view_enabled,
+        dense_view_names=dense_view_names,
         weights=build_search_weights(args),
         dense_cache_dir=getattr(args, "embedding_cache_dir", None) or embedding_config.cache_dir,
     )

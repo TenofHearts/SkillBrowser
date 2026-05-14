@@ -18,11 +18,14 @@ Executable skill invocation is planned but not implemented yet.
 - Read a full skill document or a specific section with a token budget.
 - Build a SQLite registry containing skills, documents, sections, and generated search views.
 - Run small retrieval, local hard-query, and ToolRet evaluation datasets.
+- Run SRA-Bench retrieval with this project's Hybrid agent and pass the results into the SR-Agents infer/evaluate pipeline.
 
 ## Project Layout
 
 - `src/core/` contains the general search, scoring, selection, sectioning, and view-building algorithms.
 - `src/benchmarks/` contains benchmark adapters and metric code for retrieval and ToolRet.
+- `benchmarks/SR-Agents/` is a git submodule for the upstream SRA-Bench/SR-Agents benchmark.
+- `scripts/` contains convenience scripts for SRA-Bench prepare, retrieval, and end-to-end evaluation runs.
 - Top-level files in `src/` contain the CLI, agent loop, schema, loading, reading, registry, config, and LLM client code.
 
 ## Setup
@@ -229,6 +232,45 @@ uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.js
 ```
 
 This command loads `nvidia/NV-Embed-v1` locally with Hugging Face Transformers and `trust_remote_code=True`, embeds queries and `SkillSpec`-derived tool documents, and writes candidate JSONL that can be passed to `--first-stage-candidates`. NV-Embed-v1 is a gated 7B model, so the local environment must have `torch`, `transformers`, and the Hugging Face model terms accepted/authenticated before this command can run. Authenticate with `uv run hf auth login` after accepting access to the model on Hugging Face. Model files are cached under `~/.cache/huggingface/hub/`, and remote model code is cached under `~/.cache/huggingface/modules/transformers_modules/`.
+
+## SRA-Bench / SR-Agents
+
+The upstream benchmark is tracked as a submodule:
+
+```powershell
+git submodule update --init --recursive
+uv run python scripts/sra_bench.py prepare
+```
+
+Run this project's Hybrid retriever on one SRA-Bench dataset and write an SR-Agents-compatible retrieval file:
+
+```powershell
+uv run python scripts/sra_bench.py retrieve --dataset theoremqa --top-k 50 --config config.toml
+```
+
+The retrieval file lands under `data/eval/sra/results/retrieval/` and can be consumed by SR-Agents' native `infer` and `evaluate` stages. For a full retrieve -> infer -> evaluate run against an OpenAI-compatible endpoint:
+
+```powershell
+uv run python scripts/sra_bench.py run `
+  --dataset theoremqa `
+  --model gpt-4o-mini `
+  --api-base https://api.openai.com/v1 `
+  --top-k 50 `
+  --provider-k 1 `
+  --engine direct
+```
+
+PowerShell wrappers are also available:
+
+```powershell
+.\scripts\sra_prepare.ps1
+.\scripts\sra_retrieve_hybrid.ps1 -Dataset theoremqa -TopK 50
+.\scripts\sra_run_hybrid_eval.ps1 -Dataset theoremqa -Model gpt-4o-mini -ApiBase https://api.openai.com/v1
+```
+
+For quick local smoke tests, add `--limit 5` or pass `-Limit 5` to the retrieval wrapper.
+
+The full run uses this repo for retrieval and the SR-Agents submodule for benchmark inference/evaluation. ToolQA requires the external ToolQA corpus described in the upstream SR-Agents README.
 
 ## Tests
 
