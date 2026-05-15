@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +31,7 @@ from benchmarks.sra import (  # noqa: E402
 )
 from benchmarks.sra_agent import (  # noqa: E402
     run_sra_agent_inference,
+    run_sra_search_decision_inference,
     write_sra_agent_summary,
 )
 from benchmarks.sra_preprocess import (  # noqa: E402
@@ -77,6 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
     infer_agent = sub.add_parser("infer-agent", help="Run the local SRA general-purpose skill_search agent")
     add_common_agent_infer_args(infer_agent)
 
+    infer_decision_agent = sub.add_parser(
+        "infer-decision-agent",
+        help="Run LLM skill-search decision, then solve with an SR-Agents engine",
+    )
+    add_common_decision_agent_infer_args(infer_decision_agent)
+
     evaluate = sub.add_parser("evaluate", help="Score an SR-Agents inference JSONL file")
     add_common_eval_args(evaluate)
 
@@ -91,6 +99,13 @@ def build_parser() -> argparse.ArgumentParser:
     run_agent = sub.add_parser("run-agent", help="Run local SRA agent inference, evaluation, and summary")
     add_common_agent_infer_args(run_agent)
     add_common_eval_args(run_agent, include_dataset=False, include_input=False)
+
+    run_decision_agent = sub.add_parser(
+        "run-decision-agent",
+        help="Run search-decision agent inference, evaluation, and summary",
+    )
+    add_common_decision_agent_infer_args(run_decision_agent)
+    add_common_eval_args(run_decision_agent, include_dataset=False, include_input=False)
     return parser
 
 
@@ -157,10 +172,15 @@ def add_common_agent_infer_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--api-base", help="OpenAI-compatible endpoint override")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--workers", type=int, default=1, help="Reserved for future parallel local agent runs")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel workers for agent-style runs that support it")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--config", default="config.toml")
     add_retrieval_arguments(parser, include_config=False)
+
+
+def add_common_decision_agent_infer_args(parser: argparse.ArgumentParser) -> None:
+    add_common_agent_infer_args(parser)
+    parser.add_argument("--solve-engine", default="direct", help="SR-Agents engine used after the decision phase")
 
 
 def add_common_agent_summary_args(parser: argparse.ArgumentParser) -> None:
@@ -189,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "infer-agent":
         infer_agent(args)
         return 0
+    if args.command == "infer-decision-agent":
+        infer_decision_agent(args)
+        return 0
     if args.command == "evaluate":
         evaluate(args)
         return 0
@@ -204,6 +227,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run-agent":
         ensure_sra_corpus(args.corpus)
         infer_agent(args)
+        evaluate(args)
+        summarize_agent(args)
+        return 0
+    if args.command == "run-decision-agent":
+        ensure_sra_corpus(args.corpus)
+        infer_decision_agent(args)
         evaluate(args)
         summarize_agent(args)
         return 0
@@ -305,6 +334,44 @@ def infer_agent(args: argparse.Namespace) -> Path:
     return output
 
 
+def infer_decision_agent(args: argparse.Namespace) -> Path:
+    corpus = load_sra_corpus(args.corpus)
+    skills = load_sra_search_specs(args, corpus)
+    searcher = build_sra_searcher(skills, args)
+    instances = Path(args.instances) if args.instances else default_instances(args.dataset)
+    output = (
+        Path(args.inference_output)
+        if args.inference_output
+        else default_decision_agent_inference_output(
+            args.dataset,
+            args.model,
+            args.agent_top_k,
+            args.solve_engine,
+        )
+    )
+    decision_llm = build_agent_llm(args)
+    solve_engine, solve_client = build_sra_solve_runtime(args)
+    result = run_sra_search_decision_inference(
+        searcher=searcher,
+        corpus=corpus,
+        instances_path=instances,
+        output_path=output,
+        decision_llm=decision_llm,
+        solve_engine=solve_engine,
+        solve_client=solve_client,
+        model_name=args.model,
+        top_k=args.agent_top_k,
+        limit=args.limit,
+        force=args.force,
+        sra_repo=ROOT / SRA_SUBMODULE_DIR,
+        solve_engine_name=args.solve_engine,
+        workers=args.workers,
+    )
+    print(json.dumps(result, indent=2))
+    args.inference_output = str(output)
+    return output
+
+
 def preprocess(args: argparse.Namespace) -> Path:
     llm = build_preprocess_llm(args)
     result = run_sra_preprocess(
@@ -396,6 +463,39 @@ def build_agent_llm(args: argparse.Namespace):
     )
 
 
+def build_sra_solve_runtime(args: argparse.Namespace):
+    if args.llm == "mock":
+        class _MockSolveEngine:
+            def run(self, instance, skills, client, model, **kwargs):
+                return SimpleNamespace(
+                    raw_output="Therefore, the answer is 0.5",
+                    transcript=None,
+                    skill_ids_used=[skill["skill_id"] for skill in skills],
+                    meta={},
+                )
+
+        return _MockSolveEngine(), None
+
+    sra_src = (ROOT / SRA_SUBMODULE_DIR / "src").resolve()
+    if str(sra_src) not in sys.path:
+        sys.path.insert(0, str(sra_src))
+    from sragents.infer import get_engine  # type: ignore[import-not-found]
+    from sragents.llm import create_llm_client  # type: ignore[import-not-found]
+
+    config = load_app_config(args.config)
+    api_base = args.api_base or (config.llm.base_url if config.llm else None)
+    api_key = config.llm.api_key if config.llm else None
+    engine_kwargs = {
+        "temperature": args.temperature,
+        "max_tokens": args.max_tokens,
+    }
+    if args.solve_engine in {"progressive_disclosure", "react_progressive_disclosure"}:
+        engine_kwargs["max_rounds"] = args.max_rounds
+    engine = get_engine(args.solve_engine, **engine_kwargs)
+    client = create_llm_client(api_base=api_base, api_key=api_key)
+    return engine, client
+
+
 def build_preprocess_llm(args: argparse.Namespace):
     if args.llm == "mock":
         return MockLLMClient(
@@ -460,6 +560,17 @@ def default_inference_output(dataset: str, model: str, provider_k: int) -> Path:
 def default_agent_inference_output(dataset: str, model: str, agent_top_k: int) -> Path:
     model_name = Path(model).name.replace(":", "_")
     return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-general_agent_top{agent_top_k}.jsonl"
+
+
+def default_decision_agent_inference_output(dataset: str, model: str, agent_top_k: int, solve_engine: str) -> Path:
+    model_name = Path(model).name.replace(":", "_")
+    engine_name = solve_engine.replace(":", "_")
+    return (
+        ROOT
+        / SRA_RESULTS_DIR
+        / "inference"
+        / f"{dataset}-{model_name}-search_decision_top{agent_top_k}_{engine_name}.jsonl"
+    )
 
 
 def default_eval_output(dataset: str, inference: Path) -> Path:

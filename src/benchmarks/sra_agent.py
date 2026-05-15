@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
@@ -21,9 +22,10 @@ from .sra import SRA_SUBMODULE_DIR, load_sra_instances
 
 COMPACT_SEARCH_SKILL_DESCRIPTION = (
     "name: skill_search\n"
-    "description: Use this tool when a task may require finding an appropriate skill. "
-    "It searches the skill library and returns candidate metadata so you can choose "
-    "which skill to load and use."
+    "description: This is the primary way to discover task-relevant skills. "
+    "Prefer using it near the start of benchmark tasks to retrieve candidate "
+    "skills before solving. It returns candidate metadata so you can decide "
+    "which skill, if any, to load and use."
 )
 
 FULL_SEARCH_SKILL_DESCRIPTION = (
@@ -41,9 +43,36 @@ FULL_SEARCH_SKILL_DESCRIPTION = (
     '"constraints":{}}}\n\n'
     "Load call JSON:\n"
     '{"tool":"skill_search","operation":"load_skill","skill_id":"...","section":"overview"}\n\n'
-    "When you have enough information, answer the benchmark task directly instead "
-    "of calling the tool."
+    "After search, inspect the returned candidates. If a candidate looks relevant, "
+    "call operation=load_skill before answering. If no candidate is relevant, answer "
+    "without loading a skill and briefly rely on your own reasoning."
 )
+
+SEARCH_DECISION_SYSTEM_PROMPT = (
+    "You are in retrieval-decision mode for a benchmark task. Your job is only "
+    "to decide whether searching the skill library is likely to help the final "
+    "solver. Do not solve the problem in this phase.\n\n"
+    "If a skill may help, output exactly one JSON object:\n"
+    '{"tool":"skill_search","operation":"search","retrieval_intent":{"query":"...",'
+    '"task_context":"...","required_capabilities":[],"desired_capabilities":[],'
+    '"positive_signals":[],"negative_signals":[],"constraints":{}}}\n\n'
+    "Use the original problem text as the main query. Keep required_capabilities "
+    "empty unless the problem explicitly names a mandatory operation.\n\n"
+    "If retrieval is unlikely to help, output exactly one JSON object:\n"
+    '{"operation":"skip_skill_search","reason":"..."}'
+)
+
+
+class SRASolveEngine(Protocol):
+    def run(
+        self,
+        instance: dict[str, Any],
+        skills: list[dict[str, Any]],
+        client: Any,
+        model: str,
+        **kwargs: Any,
+    ) -> Any:
+        ...
 
 
 @dataclass
@@ -219,9 +248,19 @@ class SRAGeneralPurposeAgent:
         general = (
             "You are a general-purpose agent solving benchmark tasks. "
             "Solve the user's task accurately. Your only callable tool or skill is "
-            "skill_search. If a specialized method may help, call skill_search by "
-            "returning exactly one JSON object. If you do not need a skill, answer "
-            "the task directly. Do not claim access to any other tools.\n\n"
+            "skill_search. Treat skill_search as your default first move for "
+            "benchmark tasks: in almost all cases, search before solving so you can "
+            "check whether the skill library contains a relevant method, formula, "
+            "procedure, or tool-use guide. Return exactly one JSON object with "
+            "operation=search when you search. After you see the search results, "
+            "actively look for a candidate whose name, description, capabilities, "
+            "or loading hint matches the task. If a top candidate is plausibly "
+            "relevant, prefer calling operation=load_skill for that skill_id before "
+            "solving, then answer using the loaded skill. Directly answering without "
+            "searching should be rare and reserved for clearly trivial tasks where "
+            "a retrieved skill would not add value. If you searched and the results "
+            "are not relevant, you may answer from your own reasoning without "
+            "loading a skill. Do not claim access to any other tools.\n\n"
             f"Available skill metadata:\n{search_skill}"
         )
         return f"{base_system}\n\n{general}" if base_system else general
@@ -280,6 +319,148 @@ class SRAGeneralPurposeAgent:
         }
 
 
+class SRASearchDecisionAgent:
+    """Route through hybrid search, then solve with an upstream SRA engine."""
+
+    def __init__(
+        self,
+        *,
+        searcher: SkillSearcher,
+        corpus: list[dict[str, Any]],
+        decision_llm: LLMClient,
+        solve_engine: SRASolveEngine,
+        solve_client: Any,
+        model_name: str,
+        top_k: int = 5,
+        sra_repo: str | Path = SRA_SUBMODULE_DIR,
+        method: str = "skillbrowser_search_decision_agent",
+        solve_engine_name: str = "direct",
+    ):
+        self.searcher = searcher
+        self.corpus_by_id = {
+            str(skill.get("skill_id") or skill.get("id")): skill
+            for skill in corpus
+            if str(skill.get("skill_id") or skill.get("id") or "").strip()
+        }
+        self.decision_llm = decision_llm
+        self.solve_engine = solve_engine
+        self.solve_client = solve_client
+        self.model_name = model_name
+        self.top_k = top_k
+        self.sra_repo = Path(sra_repo)
+        self.method = method
+        self.solve_engine_name = solve_engine_name
+
+    def run_instance(self, instance: dict[str, Any]) -> SRAAgentRecord:
+        started = time.perf_counter()
+        parse_errors: list[str] = []
+        search_call_count = 0
+        retrieved_skill_ids: list[str] = []
+        decision_raw = ""
+
+        try:
+            _base_system, user_prompt = build_sra_prompt(instance, sra_repo=self.sra_repo)
+            decision_messages = [
+                {"role": "system", "content": SEARCH_DECISION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ]
+            decision = self.decision_llm.complete_with_usage(decision_messages)
+            decision_raw = decision.content.strip()
+            call, parse_error = parse_sra_search_decision(decision_raw)
+            if parse_error:
+                parse_errors.append(parse_error)
+
+            route = "skip"
+            skills: list[dict[str, Any]] = []
+            if call and call.get("operation") == "search":
+                search_call_count = 1
+                route = "search"
+                retrieved_skill_ids = self._search(call)
+                skills = [
+                    self.corpus_by_id[skill_id]
+                    for skill_id in retrieved_skill_ids
+                    if skill_id in self.corpus_by_id
+                ]
+            elif call and call.get("operation") == "skip_skill_search":
+                route = "skip"
+            else:
+                route = "skip_parse_fallback"
+
+            solve_result = self.solve_engine.run(
+                instance,
+                skills,
+                self.solve_client,
+                self.model_name,
+                corpus=self.corpus_by_id,
+            )
+            raw_output = str(getattr(solve_result, "raw_output", ""))
+            solve_skill_ids = [str(item) for item in getattr(solve_result, "skill_ids_used", [])]
+            if not solve_skill_ids and self.solve_engine_name == "direct":
+                solve_skill_ids = retrieved_skill_ids
+
+            gold_ids = _gold_skill_ids(instance)
+            recalled_gold = bool(set(gold_ids) & set(retrieved_skill_ids)) if gold_ids else False
+            transcript_parts = [f"DECISION:\n{decision_raw}"]
+            if retrieved_skill_ids:
+                transcript_parts.append("RETRIEVED:\n" + json.dumps(retrieved_skill_ids, ensure_ascii=False))
+            solve_transcript = getattr(solve_result, "transcript", None)
+            if solve_transcript:
+                transcript_parts.append(f"SOLVE_TRANSCRIPT:\n{solve_transcript}")
+
+            meta = {
+                "route": route,
+                "search_call_count": search_call_count,
+                "load_call_count": 0,
+                "retrieved_skill_ids": retrieved_skill_ids,
+                "loaded_skill_ids": solve_skill_ids,
+                "gold_skill_ids": gold_ids,
+                "recalled_gold": recalled_gold,
+                "parse_errors": parse_errors,
+                "decision_input_tokens": decision.input_tokens,
+                "decision_output_tokens": decision.output_tokens,
+                "decision_total_tokens": decision.input_tokens + decision.output_tokens,
+                "decision_latency_ms": decision.elapsed_ms,
+                "decision_token_usage_source": decision.token_usage_source,
+                "solve_engine": self.solve_engine_name,
+                "solve_meta": getattr(solve_result, "meta", {}) or {},
+                "wall_time_ms": round((time.perf_counter() - started) * 1000),
+            }
+            return SRAAgentRecord(
+                instance_id=str(instance["instance_id"]),
+                dataset=str(instance["dataset"]),
+                method=self.method,
+                model=_model_short_name(self.model_name),
+                raw_output=raw_output,
+                transcript="\n\n".join(transcript_parts),
+                skill_ids_used=solve_skill_ids,
+                meta=meta,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return SRAAgentRecord(
+                instance_id=str(instance.get("instance_id", "")),
+                dataset=str(instance.get("dataset", "")),
+                method=self.method,
+                model=_model_short_name(self.model_name),
+                raw_output="",
+                transcript=f"DECISION:\n{decision_raw}" if decision_raw else None,
+                error=str(exc),
+                meta={"wall_time_ms": round((time.perf_counter() - started) * 1000)},
+            )
+
+    def _search(self, call: dict[str, Any]) -> list[str]:
+        intent = call.get("retrieval_intent")
+        if not isinstance(intent, dict):
+            intent = {"query": str(call.get("query") or "")}
+        if not intent.get("query"):
+            intent["query"] = str(call.get("query") or call.get("task_context") or "")
+        try:
+            request = SkillSearchRequest.parse_obj(_normalize_search_intent(intent))
+        except ValidationError:
+            return []
+        response = self.searcher.search(request, top_k=self.top_k)
+        return [card.id for card in response.results]
+
+
 def run_sra_agent_inference(
     *,
     searcher: SkillSearcher,
@@ -323,6 +504,72 @@ def run_sra_agent_inference(
             handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
             handle.flush()
             written += 1
+
+    records = load_sra_agent_records(output)
+    metrics = compute_sra_agent_skill_metrics(records, instances)
+    return {
+        "inference_output": str(output),
+        "written": written,
+        "total_records": len(records),
+        "metrics": metrics,
+    }
+
+
+def run_sra_search_decision_inference(
+    *,
+    searcher: SkillSearcher,
+    corpus: list[dict[str, Any]],
+    instances_path: str | Path,
+    output_path: str | Path,
+    decision_llm: LLMClient,
+    solve_engine: SRASolveEngine,
+    solve_client: Any,
+    model_name: str,
+    top_k: int = 5,
+    limit: int | None = None,
+    force: bool = False,
+    sra_repo: str | Path = SRA_SUBMODULE_DIR,
+    solve_engine_name: str = "direct",
+    workers: int = 1,
+) -> dict[str, Any]:
+    instances = load_sra_instances(instances_path)
+    if limit is not None:
+        instances = instances[:limit]
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if force and output.exists():
+        output.unlink()
+
+    done = _already_done(output)
+    pending = [instance for instance in instances if instance["instance_id"] not in done]
+    agent = SRASearchDecisionAgent(
+        searcher=searcher,
+        corpus=corpus,
+        decision_llm=decision_llm,
+        solve_engine=solve_engine,
+        solve_client=solve_client,
+        model_name=model_name,
+        top_k=top_k,
+        sra_repo=sra_repo,
+        solve_engine_name=solve_engine_name,
+    )
+
+    written = 0
+    with output.open("a", encoding="utf-8") as handle:
+        if workers <= 1:
+            for instance in pending:
+                record = agent.run_instance(instance)
+                handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
+                handle.flush()
+                written += 1
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(agent.run_instance, instance) for instance in pending]
+                for future in as_completed(futures):
+                    record = future.result()
+                    handle.write(json.dumps(record.to_dict(), ensure_ascii=False) + "\n")
+                    handle.flush()
+                    written += 1
 
     records = load_sra_agent_records(output)
     metrics = compute_sra_agent_skill_metrics(records, instances)
@@ -437,6 +684,26 @@ def parse_sra_agent_tool_call(raw: str) -> tuple[dict[str, Any] | None, str | No
     return None, None
 
 
+def parse_sra_search_decision(raw: str) -> tuple[dict[str, Any] | None, str | None]:
+    text = _extract_json_object_text(raw)
+    if not text:
+        return None, "Decision output did not contain a JSON object"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, f"Could not parse JSON decision output: {exc}"
+    if not isinstance(parsed, dict):
+        return None, "JSON decision output must be an object"
+    operation = parsed.get("operation")
+    if parsed.get("tool") == "skill_search" or operation == "search":
+        parsed.setdefault("tool", "skill_search")
+        parsed["operation"] = "search"
+        return parsed, None
+    if operation == "skip_skill_search":
+        return parsed, None
+    return None, f"Unsupported search decision operation: {operation}"
+
+
 def _extract_json_object_text(raw: str) -> str:
     stripped = raw.strip()
     if stripped.startswith("```"):
@@ -468,11 +735,13 @@ def _extract_final_answer(raw: str) -> str:
 
 def _normalize_search_intent(intent: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(intent)
+    # SRA-generated SkillSpecs do not reliably carry input/output type labels.
+    # Treat model-proposed types as explanatory text, not retrieval gates.
+    normalized["input_types"] = []
+    normalized["output_types"] = []
     for key in [
         "required_capabilities",
         "desired_capabilities",
-        "input_types",
-        "output_types",
         "positive_signals",
         "negative_signals",
     ]:

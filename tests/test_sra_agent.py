@@ -7,9 +7,13 @@ from pathlib import Path
 from benchmarks.sra import sra_corpus_to_specs
 from benchmarks.sra_agent import (
     FULL_SEARCH_SKILL_DESCRIPTION,
+    SEARCH_DECISION_SYSTEM_PROMPT,
     SRAGeneralPurposeAgent,
+    SRASearchDecisionAgent,
     compute_sra_agent_skill_metrics,
+    parse_sra_search_decision,
     run_sra_agent_inference,
+    run_sra_search_decision_inference,
 )
 from core.search import SkillSearcher
 from llm import MockLLMClient
@@ -63,6 +67,26 @@ def _agent(llm: MockLLMClient, *, inject_full_search_skill: bool = False) -> SRA
     )
 
 
+class _FakeSolveResult:
+    def __init__(self, raw_output: str, skill_ids_used: list[str] | None = None):
+        self.raw_output = raw_output
+        self.transcript = "fake solve transcript"
+        self.skill_ids_used = skill_ids_used or []
+        self.meta = {"fake": True}
+
+
+class _FakeSolveEngine:
+    def __init__(self):
+        self.calls: list[tuple[dict, list[dict], object, str]] = []
+
+    def run(self, instance, skills, client, model, **kwargs):
+        self.calls.append((instance, skills, client, model))
+        return _FakeSolveResult(
+            "Therefore, the answer is 0.5",
+            [skill["skill_id"] for skill in skills],
+        )
+
+
 def test_sra_agent_solves_without_search() -> None:
     llm = MockLLMClient(["Therefore, the answer is 0.5"])
 
@@ -103,6 +127,26 @@ def test_sra_agent_records_malformed_json_without_crashing() -> None:
     assert record.meta["parse_errors"]
 
 
+def test_sra_agent_ignores_model_supplied_type_gates_for_search() -> None:
+    llm = MockLLMClient(
+        [
+            (
+                '{"tool":"skill_search","operation":"search",'
+                '"retrieval_intent":{"query":"Bayes rule",'
+                '"input_types":["equation"],"output_types":["solution"]}}'
+            ),
+            '{"final_answer":"Therefore, the answer is 0.5"}',
+        ]
+    )
+
+    record = _agent(llm).run_instance(_instance())
+
+    assert record.error is None
+    assert record.meta["search_call_count"] == 1
+    assert '"candidates": [' in (record.transcript or "")
+    assert '"skill_id": "theoremqa_001"' in (record.transcript or "")
+
+
 def test_sra_agent_supports_full_search_skill_prompt_injection() -> None:
     llm = MockLLMClient(["Therefore, the answer is 0.5"])
 
@@ -111,6 +155,78 @@ def test_sra_agent_supports_full_search_skill_prompt_injection() -> None:
     assert llm.calls
     assert FULL_SEARCH_SKILL_DESCRIPTION in llm.calls[0][0]["content"]
     assert '"operation":"load_skill"' in llm.calls[0][0]["content"]
+
+
+def test_sra_agent_prompt_encourages_search_before_final_answer() -> None:
+    llm = MockLLMClient(["Therefore, the answer is 0.5"])
+
+    _agent(llm).run_instance(_instance())
+
+    system_prompt = llm.calls[0][0]["content"]
+    assert "Treat skill_search as your default first move" in system_prompt
+    assert "Directly answering without searching should be rare" in system_prompt
+    assert "prefer calling operation=load_skill" in system_prompt
+
+
+def test_search_decision_parser_accepts_search_and_skip() -> None:
+    search, search_error = parse_sra_search_decision(
+        '{"operation":"search","retrieval_intent":{"query":"Bayes"}}'
+    )
+    skip, skip_error = parse_sra_search_decision('{"operation":"skip_skill_search","reason":"easy"}')
+
+    assert search_error is None
+    assert search and search["tool"] == "skill_search"
+    assert skip_error is None
+    assert skip and skip["operation"] == "skip_skill_search"
+
+
+def test_search_decision_agent_searches_then_delegates_to_sra_engine() -> None:
+    llm = MockLLMClient(
+        ['{"tool":"skill_search","operation":"search","retrieval_intent":{"query":"Bayes rule"}}']
+    )
+    engine = _FakeSolveEngine()
+    agent = SRASearchDecisionAgent(
+        searcher=SkillSearcher(sra_corpus_to_specs(_corpus())),
+        corpus=_corpus(),
+        decision_llm=llm,
+        solve_engine=engine,
+        solve_client=object(),
+        model_name="mock-model",
+        top_k=2,
+        solve_engine_name="direct",
+    )
+
+    record = agent.run_instance(_instance())
+
+    assert record.raw_output == "Therefore, the answer is 0.5"
+    assert record.meta["search_call_count"] == 1
+    assert record.meta["route"] == "search"
+    assert record.meta["retrieved_skill_ids"][0] == "theoremqa_001"
+    assert record.skill_ids_used[0] == "theoremqa_001"
+    assert engine.calls[0][1][0]["skill_id"] == "theoremqa_001"
+    assert SEARCH_DECISION_SYSTEM_PROMPT in llm.calls[0][0]["content"]
+
+
+def test_search_decision_agent_can_skip_search_and_still_solve() -> None:
+    llm = MockLLMClient(['{"operation":"skip_skill_search","reason":"simple"}'])
+    engine = _FakeSolveEngine()
+    agent = SRASearchDecisionAgent(
+        searcher=SkillSearcher(sra_corpus_to_specs(_corpus())),
+        corpus=_corpus(),
+        decision_llm=llm,
+        solve_engine=engine,
+        solve_client=None,
+        model_name="mock-model",
+        top_k=2,
+    )
+
+    record = agent.run_instance(_instance())
+
+    assert record.raw_output == "Therefore, the answer is 0.5"
+    assert record.meta["search_call_count"] == 0
+    assert record.meta["route"] == "skip"
+    assert record.skill_ids_used == []
+    assert engine.calls[0][1] == []
 
 
 def test_sra_agent_inference_jsonl_schema_and_metrics(tmp_path: Path) -> None:
@@ -138,6 +254,32 @@ def test_sra_agent_inference_jsonl_schema_and_metrics(tmp_path: Path) -> None:
     assert rows[0]["instance_id"] == "q1"
     assert rows[0]["raw_output"] == "Therefore, the answer is 0.5"
     assert rows[0]["skill_ids_used"] == ["theoremqa_001"]
+    assert result["metrics"]["skill_recall_when_searched"] == 1.0
+
+
+def test_sra_search_decision_inference_jsonl_schema(tmp_path: Path) -> None:
+    output = tmp_path / "decision.jsonl"
+    llm = MockLLMClient(
+        ['{"tool":"skill_search","operation":"search","retrieval_intent":{"query":"Bayes rule"}}']
+    )
+
+    result = run_sra_search_decision_inference(
+        searcher=SkillSearcher(sra_corpus_to_specs(_corpus())),
+        corpus=_corpus(),
+        instances_path=_write_instances(tmp_path, [_instance()]),
+        output_path=output,
+        decision_llm=llm,
+        solve_engine=_FakeSolveEngine(),
+        solve_client=None,
+        model_name="mock-model",
+        top_k=2,
+        solve_engine_name="direct",
+    )
+
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["instance_id"] == "q1"
+    assert rows[0]["raw_output"] == "Therefore, the answer is 0.5"
+    assert rows[0]["meta"]["solve_engine"] == "direct"
     assert result["metrics"]["skill_recall_when_searched"] == 1.0
 
 
@@ -184,6 +326,40 @@ def test_sra_bench_infer_agent_cli_smoke(tmp_path: Path, capsys) -> None:
             "mock-model",
             "--max-rounds",
             "1",
+            "--limit",
+            "1",
+            "--retrieval-mode",
+            "bm25",
+            "--embedding-backend",
+            "none",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert output.exists()
+    assert '"inference_output"' in captured.out
+
+
+def test_sra_bench_infer_decision_agent_cli_smoke(tmp_path: Path, capsys) -> None:
+    corpus = tmp_path / "corpus.json"
+    instances = _write_instances(tmp_path, [_instance()])
+    output = tmp_path / "decision-agent.jsonl"
+    corpus.write_text(json.dumps(_corpus()), encoding="utf-8")
+
+    exit_code = sra_bench_main(
+        [
+            "infer-decision-agent",
+            "--corpus",
+            str(corpus),
+            "--instances",
+            str(instances),
+            "--inference-output",
+            str(output),
+            "--llm",
+            "mock",
+            "--model",
+            "mock-model",
             "--limit",
             "1",
             "--retrieval-mode",
