@@ -68,6 +68,9 @@ output = "toolret-result.json"
 checkpoint = "toolret-checkpoint.jsonl"
 resume = true
 max_runtime_seconds = 300.5
+
+[sra]
+skill_dirs = ["data/eval/sra/theoremQA", "data/eval/sra/web"]
 """,
         encoding="utf-8",
     )
@@ -109,3 +112,13 @@ max_runtime_seconds = 300.5
     assert config.toolret.checkpoint == "toolret-checkpoint.jsonl"
     assert config.toolret.resume is True
     assert config.toolret.max_runtime_seconds == 300.5
+    assert config.sra.skill_dirs == ["data/eval/sra/theoremQA", "data/eval/sra/web"]
+
+
+def test_load_app_config_without_sra_uses_empty_skill_dirs(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("", encoding="utf-8")
+
+    config = load_app_config(config_path)
+
+    assert config.sra.skill_dirs == []

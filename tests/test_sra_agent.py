@@ -10,6 +10,7 @@ from benchmarks.sra_agent import (
     SEARCH_DECISION_SYSTEM_PROMPT,
     SRAGeneralPurposeAgent,
     SRASearchDecisionAgent,
+    build_sra_prompt,
     compute_sra_agent_skill_metrics,
     parse_sra_search_decision,
     run_sra_agent_inference,
@@ -166,6 +167,33 @@ def test_sra_agent_prompt_encourages_search_before_final_answer() -> None:
     assert "Treat skill_search as your default first move" in system_prompt
     assert "Directly answering without searching should be rare" in system_prompt
     assert "prefer calling operation=load_skill" in system_prompt
+
+
+def test_sra_agent_uses_dataset_native_sra_reasoning_prompts() -> None:
+    theorem_system, theorem_user = build_sra_prompt(_instance())
+    logic_system, logic_user = build_sra_prompt(
+        {
+            "instance_id": "logic1",
+            "dataset": "logicbench",
+            "question": "Does P entail Q?",
+            "skill_annotations": ["logicbench_001"],
+        }
+    )
+    champ_system, champ_user = build_sra_prompt(
+        {
+            "instance_id": "champ1",
+            "dataset": "champ",
+            "question": "Compute 2 + 2.",
+            "skill_annotations": ["champ_001"],
+        }
+    )
+
+    assert "science teacher" in theorem_system
+    assert theorem_user.startswith("Problem:")
+    assert logic_system == ""
+    assert logic_user == "Does P entail Q?"
+    assert "expert on mathematics" in champ_system
+    assert "ANSWER: <your answer>" in champ_user
 
 
 def test_search_decision_parser_accepts_search_and_skip() -> None:

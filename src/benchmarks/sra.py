@@ -130,25 +130,44 @@ def run_sra_retrieval(
     sra_repo: str | Path = SRA_SUBMODULE_DIR,
 ) -> dict[str, Any]:
     instances = load_sra_instances(instances_path)
-    records = []
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = output.with_name(f"{output.stem}.checkpoint.jsonl")
+    records = _load_retrieval_checkpoint(checkpoint_path)
+    done_ids = {record["instance_id"] for record in records}
     for instance in instances:
         gold_ids = [str(item) for item in instance.get("skill_annotations", []) if str(item).strip()]
         if not gold_ids:
             continue
         if limit is not None and len(records) >= limit:
             break
+        if instance["instance_id"] in done_ids:
+            continue
         query = build_sra_query(instance, sra_repo=sra_repo)
         response = searcher.search(SkillSearchRequest(query=query), top_k=top_k)
-        records.append(
-            {
-                "instance_id": instance["instance_id"],
-                "gold_skill_ids": gold_ids,
-                "retrieved": [
-                    {"skill_id": card.id, "score": float(card.score)}
-                    for card in response.results
-                ],
-            }
-        )
+        record = {
+            "instance_id": instance["instance_id"],
+            "gold_skill_ids": gold_ids,
+            "retrieved": [
+                {"skill_id": card.id, "score": float(card.score)}
+                for card in response.results
+            ],
+        }
+        records.append(record)
+        done_ids.add(record["instance_id"])
+        with checkpoint_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if len(records) % 10 == 0:
+            print(
+                json.dumps(
+                    {
+                        "event": "sra_retrieval_progress",
+                        "records": len(records),
+                        "checkpoint": str(checkpoint_path),
+                    }
+                ),
+                flush=True,
+            )
     dataset = instances[0].get("dataset") if instances else None
     metrics = compute_sra_retrieval_metrics(records, top_k=top_k)
     payload = {
@@ -159,15 +178,33 @@ def run_sra_retrieval(
             "corpus_size": corpus_size,
             "n_queries": len(records),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "extra": {"source": "SkillBrowser Hybrid SkillSearcher"},
+            "extra": {"source": "SkillBrowser Hybrid SkillSearcher", "checkpoint": str(checkpoint_path)},
         },
         "metrics": metrics,
         "results": records,
     }
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
+
+
+def _load_retrieval_checkpoint(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records = []
+    seen: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        instance_id = record.get("instance_id")
+        if not isinstance(instance_id, str) or instance_id in seen:
+            continue
+        seen.add(instance_id)
+        records.append(record)
+    return records
 
 
 def compute_sra_retrieval_metrics(records: list[dict[str, Any]], *, top_k: int) -> dict[str, float]:

@@ -60,3 +60,14 @@ workers = 1
 output = "data/eval/toolret/results/toolret_result.json"
 checkpoint = "data/eval/toolret/results/toolret_result.checkpoint.jsonl"
 resume = false
+
+[sra]
+skill_dirs = [
+  "data/eval/sra/theoremQA",
+  "data/eval/sra/logicbench",
+  "data/eval/sra/toolqa",
+  "data/eval/sra/champ",
+  "data/eval/sra/medcalcbench",
+  "data/eval/sra/bigcodebench",
+  "data/eval/sra/web",
+]

@@ -656,16 +656,18 @@ def write_sra_agent_summary(
 
 
 def build_sra_prompt(instance: dict[str, Any], *, sra_repo: str | Path = SRA_SUBMODULE_DIR) -> tuple[str, str]:
+    """Return the dataset-native SRA prompt used by the solving agent.
+
+    The search-decision agent intentionally keeps its own fixed decision system
+    prompt. This helper is for task-solving prompts only.
+    """
     repo_path = Path(sra_repo).resolve()
     src_path = repo_path / "src"
     if src_path.exists() and str(src_path) not in sys.path:
         sys.path.insert(0, str(src_path))
-    try:
-        from sragents.prompts import build_prompt  # type: ignore[import-not-found]
+    from sragents.prompts import build_prompt  # type: ignore[import-not-found]
 
-        return build_prompt(instance)
-    except Exception:
-        return "", str(instance.get("question", ""))
+    return build_prompt(instance)
 
 
 def parse_sra_agent_tool_call(raw: str) -> tuple[dict[str, Any] | None, str | None]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,6 +20,9 @@ DEFAULT_SRA_SKILL_DIR = Path("data/skills/sra")
 DEFAULT_SRA_PREPROCESS_CHECKPOINT = Path("data/eval/sra/preprocess/deepseek-v4-pro.jsonl")
 DEFAULT_SRA_PREPROCESS_MODEL = "deepseek-v4-pro"
 CONTENT_EXCERPT_CHARS = 6000
+DETERMINISTIC_PREPROCESS_MODEL = "deterministic"
+PREPROCESS_MODES = {"llm", "deterministic"}
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9+#.-]*")
 
 
 SYSTEM_PROMPT = (
@@ -177,6 +181,69 @@ Rules:
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_prompt}]
 
 
+def deterministic_sra_metadata(skill: dict[str, Any]) -> SraSkillMetadata:
+    """Build stable retrieval metadata from an existing SRA skill row."""
+
+    skill_id = _skill_id(skill)
+    dataset = _dataset_from_skill_id(skill_id)
+    name = _compact_text(skill.get("name") or skill_id, 140)
+    description = _compact_text(skill.get("description") or "", 1000)
+    content = str(skill.get("content") or "")
+    content_text = _compact_text(content, 1800)
+    source_summary = description or _compact_text(content, 500) or name
+    short_description = _sentence(source_summary, 220)
+    headings = _markdown_headings(content)
+    cues = _dedupe([*headings[:4], *_keyword_phrases(name, source_summary, limit=6)])
+    cue_text = ", ".join(cues[:8])
+    long_parts = [
+        source_summary,
+        f"Recognition cues include {cue_text}." if cue_text else "",
+    ]
+    if content_text and content_text != source_summary:
+        long_parts.append(f"Use this skill for tasks matching its documented workflow: {content_text}")
+    long_description = _compact_text(" ".join(part for part in long_parts if part), 1200)
+    capability_phrases = _dedupe([name, *_keyword_phrases(name, source_summary, limit=4)])
+    capabilities = [
+        {
+            "id": _slugify(f"use_{phrase}") or "use_skill",
+            "description": _sentence(f"Use {name} for {phrase}. {source_summary}", 600),
+        }
+        for phrase in capability_phrases[:4]
+    ]
+    if not capabilities:
+        capabilities = [{"id": "use_skill", "description": _sentence(source_summary, 600)}]
+    when_to_use = _dedupe([
+        *_extract_when_to_use_items(content),
+        f"The task asks for {name}.",
+        source_summary,
+    ])[:4]
+    positive_examples = [
+        {
+            "user_query": _sentence(f"How do I use {name}?", 500),
+            "reason": "The query names or paraphrases this skill.",
+        },
+        {
+            "user_query": _sentence(source_summary, 500),
+            "reason": "The query matches the skill description.",
+        },
+    ]
+    tags = _dedupe([
+        "sra-bench",
+        dataset,
+        *_keyword_phrases(name, source_summary, limit=10),
+    ])[:12]
+    return SraSkillMetadata.parse_obj(
+        {
+            "short_description": short_description,
+            "long_description": long_description or short_description,
+            "capabilities": capabilities,
+            "when_to_use": when_to_use or [short_description],
+            "positive_examples": positive_examples[:3],
+            "tags": tags,
+        }
+    )
+
+
 def sra_skill_to_enriched_spec(skill: dict[str, Any], metadata: SraSkillMetadata) -> SkillSpec:
     skill_id = _skill_id(skill)
     name = str(skill.get("name") or skill_id).strip()
@@ -242,13 +309,20 @@ def run_sra_preprocess(
     corpus_path: str | Path = SRA_CORPUS_PATH,
     output_skill_dir: str | Path = DEFAULT_SRA_SKILL_DIR,
     checkpoint_path: str | Path = DEFAULT_SRA_PREPROCESS_CHECKPOINT,
-    llm: LLMClient,
+    llm: LLMClient | None,
     model_name: str = DEFAULT_SRA_PREPROCESS_MODEL,
     limit: int | None = None,
     resume: bool = False,
     force: bool = False,
+    dataset: str | None = None,
+    mode: str = "llm",
 ) -> dict[str, Any]:
+    if mode not in PREPROCESS_MODES:
+        raise ValueError(f"Unsupported SRA preprocess mode: {mode}")
     corpus = load_sra_corpus(corpus_path)
+    dataset_filter = _normalize_dataset_filter(dataset)
+    if dataset_filter:
+        corpus = [skill for skill in corpus if _dataset_from_skill_id(_skill_id(skill)).lower() == dataset_filter]
     if limit is not None:
         corpus = corpus[:limit]
     checkpoint = Path(checkpoint_path)
@@ -268,13 +342,19 @@ def run_sra_preprocess(
                 reused += 1
             else:
                 try:
-                    raw = llm.complete(sra_metadata_messages(skill))
-                    metadata = parse_sra_metadata(raw)
+                    if mode == "deterministic":
+                        metadata = deterministic_sra_metadata(skill)
+                    else:
+                        if llm is None:
+                            raise ValueError("LLM preprocess mode requires an llm client")
+                        raw = llm.complete(sra_metadata_messages(skill))
+                        metadata = parse_sra_metadata(raw)
                     handle.write(
                         json.dumps(
                             {
                                 "skill_id": skill_id,
                                 "model": model_name,
+                                "mode": mode,
                                 "metadata": metadata.dict(),
                             },
                             ensure_ascii=False,
@@ -286,7 +366,7 @@ def run_sra_preprocess(
                     failed += 1
                     handle.write(
                         json.dumps(
-                            {"skill_id": skill_id, "model": model_name, "error": str(exc)},
+                            {"skill_id": skill_id, "model": model_name, "mode": mode, "error": str(exc)},
                             ensure_ascii=False,
                         )
                         + "\n"
@@ -299,6 +379,8 @@ def run_sra_preprocess(
     return {
         "ok": failed == 0,
         "model": model_name,
+        "mode": mode,
+        "dataset": dataset_filter or "all",
         "corpus": str(corpus_path),
         "output_skill_dir": str(output_skill_dir),
         "checkpoint": str(checkpoint),
@@ -382,3 +464,78 @@ def _dedupe(values: list[str]) -> list[str]:
         if cleaned and cleaned not in result:
             result.append(cleaned)
     return result
+
+
+def _normalize_dataset_filter(dataset: str | None) -> str | None:
+    if dataset is None:
+        return None
+    normalized = dataset.strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    if normalized == "theoremqa":
+        return "theoremqa"
+    return normalized
+
+
+def _sentence(value: Any, max_chars: int) -> str:
+    text = _compact_text(value, max_chars)
+    if not text:
+        return ""
+    return text if text.endswith((".", "?", "!")) else f"{text}."
+
+
+def _markdown_headings(content: str) -> list[str]:
+    headings = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            continue
+        heading = stripped.lstrip("#").strip()
+        if heading:
+            headings.append(_compact_text(heading, 80))
+    return _dedupe(headings)
+
+
+def _keyword_phrases(name: str, text: str, *, limit: int) -> list[str]:
+    words = []
+    for raw in _WORD_RE.findall(f"{name} {text}"):
+        cleaned = raw.strip("._-").lower()
+        if len(cleaned) < 3:
+            continue
+        if cleaned in {
+            "and",
+            "are",
+            "for",
+            "from",
+            "into",
+            "the",
+            "this",
+            "that",
+            "use",
+            "when",
+            "with",
+            "you",
+            "your",
+        }:
+            continue
+        words.append(cleaned)
+    return _dedupe(words)[:limit]
+
+
+def _extract_when_to_use_items(content: str) -> list[str]:
+    lines = content.splitlines()
+    items = []
+    in_when_section = False
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+        if stripped.startswith("#"):
+            in_when_section = "when to use" in lower or "when to apply" in lower
+            continue
+        if in_when_section and stripped.startswith(("-", "*")):
+            item = stripped.lstrip("-*").strip()
+            if item:
+                items.append(_sentence(item, 300))
+        if len(items) >= 4:
+            break
+    return _dedupe(items)

@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11 without tomllib
     tomllib = None  # type: ignore[assignment]
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.embeddings import DEFAULT_EMBEDDING_MODEL
 from llm import DEFAULT_OPENAI_COMPATIBLE_MODEL
@@ -81,12 +81,17 @@ class ToolRetConfig(BaseModel):
     max_runtime_seconds: Optional[float] = None
 
 
+class SraConfig(BaseModel):
+    skill_dirs: list[str] = Field(default_factory=list)
+
+
 class AppConfig(BaseModel):
     llm: Optional[LLMConfig] = None
     agent: AgentConfig = AgentConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     search: SearchConfig = SearchConfig()
     toolret: ToolRetConfig = ToolRetConfig()
+    sra: SraConfig = SraConfig()
 
 
 def load_app_config(path: str | Path) -> AppConfig:
@@ -114,7 +119,8 @@ def _load_toml(path: Path) -> dict[str, Any]:
 def _load_minimal_toml(text: str) -> dict[str, Any]:
     data: dict[str, Any] = {}
     current: dict[str, Any] = data
-    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+    logical_lines = _minimal_toml_logical_lines(text)
+    for line_number, raw_line in logical_lines:
         line = raw_line.split("#", 1)[0].strip()
         if not line:
             continue
@@ -133,12 +139,35 @@ def _load_minimal_toml(text: str) -> dict[str, Any]:
     return data
 
 
+def _minimal_toml_logical_lines(text: str) -> list[tuple[int, str]]:
+    lines = []
+    pending = None
+    pending_line = 0
+    bracket_depth = 0
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        stripped = raw_line.split("#", 1)[0].strip()
+        if pending is None:
+            pending = raw_line
+            pending_line = line_number
+            bracket_depth = stripped.count("[") - stripped.count("]")
+        else:
+            pending += " " + raw_line.strip()
+            bracket_depth += stripped.count("[") - stripped.count("]")
+        if bracket_depth <= 0:
+            lines.append((pending_line, pending))
+            pending = None
+            bracket_depth = 0
+    if pending is not None:
+        lines.append((pending_line, pending))
+    return lines
+
+
 def _parse_minimal_toml_value(value: str, line_number: int) -> Any:
     if value.startswith("[") and value.endswith("]"):
         inner = value[1:-1].strip()
         if not inner:
             return []
-        return [_parse_minimal_toml_value(part.strip(), line_number) for part in inner.split(",")]
+        return [_parse_minimal_toml_value(part.strip(), line_number) for part in inner.split(",") if part.strip()]
     if value.startswith('"') and value.endswith('"'):
         return value[1:-1]
     if value.startswith("'") and value.endswith("'"):

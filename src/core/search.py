@@ -138,11 +138,17 @@ class SkillSearcher:
         self.dense_cache_dir = Path(dense_cache_dir) if dense_cache_dir else None
         self.documents = [_skill_search_text(skill) for skill in skills]
         self.doc_tokens = [tokenize(doc) for doc in self.documents]
+        self.doc_token_counts = [Counter(tokens) for tokens in self.doc_tokens]
         self.avg_doc_len = sum(len(tokens) for tokens in self.doc_tokens) / max(len(self.doc_tokens), 1)
         self.document_frequency = Counter()
         for tokens in self.doc_tokens:
             self.document_frequency.update(set(tokens))
         self.skill_views = [build_skill_views(skill) for skill in skills]
+        if dense_view_names is not None:
+            self.skill_views = [
+                [view for view in views if view.view_name in dense_view_names]
+                for views in self.skill_views
+            ]
         self.view_tokens = [
             {view.view_name: tokenize(view.text) for view in views}
             for views in self.skill_views
@@ -156,9 +162,27 @@ class SkillSearcher:
                 if tokens:
                     frequency.update(set(tokens))
             self.view_document_frequency[view_name] = frequency
+        self.view_tfidf_vectors = [
+            {
+                view_name: self._tfidf_vector(tokens, self.view_document_frequency[view_name])
+                for view_name, tokens in skill_view_tokens.items()
+                if tokens
+            }
+            for skill_view_tokens in self.view_tokens
+        ]
+        self.view_tfidf_norms = [
+            {
+                view_name: _vector_norm(vector)
+                for view_name, vector in skill_vectors.items()
+            }
+            for skill_vectors in self.view_tfidf_vectors
+        ]
         self.dense_view_embeddings: dict[str, list[list[float]]] = {}
+        self.dense_view_tensors: dict[str, object] = {}
+        self._torch = None
         if self.dense_enabled:
             self._build_dense_view_embeddings()
+            self._build_dense_view_tensors()
 
     def search(self, request: SkillSearchRequest, *, top_k: int = 5) -> SkillSearchResponse:
         top_k = min(max(top_k, 1), 50)
@@ -173,17 +197,14 @@ class SkillSearcher:
         query_text = _request_query_text(request)
         query_tokens = tokenize(query_text)
         lexical_raw = (
-            [self._bm25(query_tokens, tokens) for tokens in self.doc_tokens]
+            [self._bm25(query_tokens, index) for index in range(len(self.doc_tokens))]
             if self.bm25_enabled
             else [0.0 for _ in self.doc_tokens]
         )
         lexical_rank = _rank_scores(lexical_raw)
         sparse_view_raw = (
             {
-                view_name: [
-                    self._token_vector_cosine(query_tokens, skill_view_tokens.get(view_name, []), view_name)
-                    for skill_view_tokens in self.view_tokens
-                ]
+                view_name: self._sparse_view_scores(query_tokens, view_name)
                 for view_name in self.view_names
             }
             if self.sparse_view_enabled
@@ -274,10 +295,11 @@ class SkillSearcher:
             abstention_reason=None if results else "no_candidate_above_threshold",
         )
 
-    def _bm25(self, query_tokens: list[str], doc_tokens: list[str]) -> float:
+    def _bm25(self, query_tokens: list[str], doc_index: int) -> float:
+        doc_tokens = self.doc_tokens[doc_index]
         if not query_tokens or not doc_tokens:
             return 0.0
-        counts = Counter(doc_tokens)
+        counts = self.doc_token_counts[doc_index]
         score = 0.0
         k1 = 1.5
         b = 0.75
@@ -291,12 +313,19 @@ class SkillSearcher:
             score += idf * (tf * (k1 + 1)) / denom
         return score
 
-    def _token_vector_cosine(self, query_tokens: list[str], doc_tokens: list[str], view_name: str) -> float:
-        if not query_tokens or not doc_tokens:
-            return 0.0
+    def _sparse_view_scores(self, query_tokens: list[str], view_name: str) -> list[float]:
+        if not query_tokens:
+            return [0.0 for _ in self.skills]
         query_vector = self._tfidf_vector(query_tokens, self.view_document_frequency[view_name])
-        doc_vector = self._tfidf_vector(doc_tokens, self.view_document_frequency[view_name])
-        return _cosine(query_vector, doc_vector)
+        query_norm = _vector_norm(query_vector)
+        if query_norm == 0:
+            return [0.0 for _ in self.skills]
+        scores = []
+        for index in range(len(self.skills)):
+            doc_vector = self.view_tfidf_vectors[index].get(view_name, {})
+            doc_norm = self.view_tfidf_norms[index].get(view_name, 0.0)
+            scores.append(_cosine_with_norms(query_vector, query_norm, doc_vector, doc_norm))
+        return scores
 
     def _tfidf_vector(self, tokens: list[str], document_frequency: Counter[str]) -> dict[str, float]:
         counts = Counter(tokens)
@@ -336,7 +365,13 @@ class SkillSearcher:
             self.dense_view_embeddings[view_name] = self._load_or_embed_view(view_name, skill_ids, texts)
 
     def _load_or_embed_view(self, view_name: str, skill_ids: list[str], texts: list[str]) -> list[list[float]]:
-        cache_path = self._dense_cache_path(view_name, skill_ids, texts)
+        cache_path = dense_cache_path(
+            self.dense_cache_dir,
+            self.embedder.model_name,
+            view_name,
+            skill_ids,
+            texts,
+        )
         if cache_path and cache_path.exists():
             cached = _read_dense_cache(cache_path)
             if cached is not None and len(cached) == len(texts):
@@ -347,17 +382,17 @@ class SkillSearcher:
             _write_dense_cache(cache_path, embeddings)
         return embeddings
 
-    def _dense_cache_path(self, view_name: str, skill_ids: list[str], texts: list[str]) -> Path | None:
-        if self.dense_cache_dir is None:
-            return None
-        signature = hashlib.sha256()
-        signature.update(self.embedder.model_name.encode("utf-8"))
-        signature.update(view_name.encode("utf-8"))
-        for skill_id, text in zip(skill_ids, texts):
-            signature.update(skill_id.encode("utf-8"))
-            signature.update(hashlib.sha256(text.encode("utf-8")).digest())
-        safe_view_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", view_name)
-        return self.dense_cache_dir / f"{safe_view_name}-{signature.hexdigest()[:16]}.jsonl"
+    def _build_dense_view_tensors(self) -> None:
+        try:
+            import torch  # type: ignore[import-not-found]
+        except ImportError:
+            return
+        self._torch = torch
+        self.dense_view_tensors = {
+            view_name: torch.as_tensor(embeddings, dtype=torch.float32)
+            for view_name, embeddings in self.dense_view_embeddings.items()
+            if embeddings and embeddings[0]
+        }
 
     def _dense_view_scores(self, request: SkillSearchRequest) -> dict[str, list[float]]:
         if not self.dense_enabled or not self.dense_view_embeddings:
@@ -374,6 +409,13 @@ class SkillSearcher:
             query_embedding = embeddings_by_group.get(group)
             if query_embedding is None:
                 scores[view_name] = [0.0 for _ in embeddings]
+                continue
+            tensor = self.dense_view_tensors.get(view_name)
+            if tensor is not None and self._torch is not None:
+                query_tensor = self._torch.as_tensor(query_embedding, dtype=self._torch.float32)
+                with self._torch.no_grad():
+                    values = self._torch.mv(tensor, query_tensor).clamp_min(0.0).tolist()
+                scores[view_name] = values
                 continue
             scores[view_name] = [dense_cosine(query_embedding, embedding) for embedding in embeddings]
         return scores
@@ -736,6 +778,24 @@ def _cosine(left: dict[str, float], right: dict[str, float]) -> float:
     return dot / (left_norm * right_norm)
 
 
+def _vector_norm(vector: dict[str, float]) -> float:
+    return math.sqrt(sum(value * value for value in vector.values()))
+
+
+def _cosine_with_norms(
+    left: dict[str, float],
+    left_norm: float,
+    right: dict[str, float],
+    right_norm: float,
+) -> float:
+    if not left or not right or left_norm == 0 or right_norm == 0:
+        return 0.0
+    if len(left) > len(right):
+        left, right = right, left
+    dot = sum(value * right.get(token, 0.0) for token, value in left.items())
+    return dot / (left_norm * right_norm) if dot > 0 else 0.0
+
+
 def _read_dense_cache(path: Path) -> list[list[float]] | None:
     try:
         return [json.loads(line)["vector"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -747,6 +807,33 @@ def _write_dense_cache(path: Path, embeddings: list[list[float]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for position, vector in enumerate(embeddings):
             handle.write(json.dumps({"position": position, "vector": vector}) + "\n")
+
+
+def dense_cache_path(
+    dense_cache_dir: str | Path | None,
+    model_name: str,
+    view_name: str,
+    skill_ids: list[str],
+    texts: list[str],
+) -> Path | None:
+    if dense_cache_dir is None:
+        return None
+    signature = hashlib.sha256()
+    signature.update(model_name.encode("utf-8"))
+    signature.update(view_name.encode("utf-8"))
+    for skill_id, text in zip(skill_ids, texts):
+        signature.update(skill_id.encode("utf-8"))
+        signature.update(hashlib.sha256(text.encode("utf-8")).digest())
+    safe_view_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", view_name)
+    return Path(dense_cache_dir) / f"{safe_view_name}-{signature.hexdigest()[:16]}.jsonl"
+
+
+def read_dense_cache(path: str | Path) -> list[list[float]] | None:
+    return _read_dense_cache(Path(path))
+
+
+def write_dense_cache(path: str | Path, embeddings: list[list[float]]) -> None:
+    _write_dense_cache(Path(path), embeddings)
 
 
 def _view_weight(view_name: str) -> float:
