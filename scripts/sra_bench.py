@@ -350,7 +350,11 @@ def infer(args: argparse.Namespace) -> Path:
                 f"corpus_path={corpus_path}",
             ]
         )
-        label = f"skillbrowser_hybrid_top{args.provider_k}_{args.engine}"
+        retrieval_name = retrieval.name.lower()
+        if "sragents_bm25" in retrieval_name or "sragents-bm25" in retrieval_name:
+            label = f"sragents_bm25_top{args.provider_k}_{args.engine}"
+        else:
+            label = f"skillbrowser_hybrid_top{args.provider_k}_{args.engine}"
     else:
         command.extend(["--provider-arg", f"corpus_path={corpus_path}"])
         label = f"oracle_{args.engine}"

@@ -17,13 +17,13 @@ Executable skill invocation is planned but not implemented yet.
 - Search skills with an in-memory hybrid scorer: BM25 sparse retrieval, optional learned dense embeddings over per-view skill text, reciprocal-rank fusion, and request capability/type hints.
 - Read a full skill document or a specific section with a token budget.
 - Build a SQLite registry containing skills, documents, sections, and generated search views.
-- Run small retrieval, local hard-query, and ToolRet evaluation datasets.
+- Run small retrieval and local hard-query evaluation datasets.
 - Run SRA-Bench retrieval with this project's Hybrid agent and pass the results into the SR-Agents infer/evaluate pipeline.
 
 ## Project Layout
 
 - `src/core/` contains the general search, scoring, selection, sectioning, and view-building algorithms.
-- `src/benchmarks/` contains benchmark adapters and metric code for retrieval and ToolRet.
+- `src/benchmarks/` contains benchmark adapters and metric code for retrieval and SRA-Bench integration.
 - `benchmarks/SR-Agents/` is a git submodule for the upstream SRA-Bench/SR-Agents benchmark.
 - `scripts/` contains convenience scripts for SRA-Bench prepare, retrieval, and end-to-end evaluation runs.
 - Top-level files in `src/` contain the CLI, agent loop, schema, loading, reading, registry, config, and LLM client code.
@@ -139,100 +139,6 @@ uv run skill-agent run-agent "extract text from a PDF" --skill-dir data/skills -
 
 `--skill-dir` is accepted either before or after the subcommand.
 
-Run ToolRet retrieval-only evaluation against ToolRet query/tool exports:
-
-```powershell
-uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --top-k 10 --limit 30
-```
-
-The ToolRet command evaluates `SkillSearcher` directly by default. Most run options can live in `config.toml`, so repeated experiments can usually be launched with:
-
-```powershell
-uv run skill-agent eval-toolret --config config.toml
-```
-
-JSONL and JSON exports work without extra dependencies; parquet exports require `pandas` with a parquet engine such as `pyarrow`. Put generated result JSON and checkpoints under `data/eval/toolret/results/`; that folder is ignored by git.
-
-```toml
-[embedding]
-enabled = true
-backend = "hf-transformers"
-model = "data/models/BAAI/bge-base-en-v1.5"
-batch_size = 8
-max_length = 512
-device = ""
-cache_dir = "data/eval/toolret/embedding_cache"
-
-[search]
-weight_lexical = 1.0
-weight_sparse_view = 0.35
-weight_dense = 0.45
-weight_rrf = 0.2
-weight_capability = 0.25
-weight_usage = 0.15
-weight_input_type = 0.2
-weight_output_type = 0.2
-weight_penalty = 0.4
-
-[toolret]
-queries = "path/to/toolret_queries.jsonl"
-tools = "path/to/toolret_tools.jsonl"
-first_stage_candidates = ""
-limit = 30
-top_k = 10
-category = "all"
-use_instruction = true
-retrieval_mode = "hybrid"
-baseline = "hybrid"
-llm = "mock"
-first_stage_model = "BAAI/bge-base-en-v1.5"
-first_stage_backend = "auto"
-embed_batch_size = 8
-embed_max_length = 512
-embed_device = ""
-candidate_pool_size = 100
-rankgpt_window_size = 20
-rankgpt_step_size = 10
-workers = 1
-output = "data/eval/toolret/results/toolret_result.json"
-checkpoint = "data/eval/toolret/results/toolret_result.checkpoint.jsonl"
-resume = false
-```
-
-To compare instruction-aware and query-only retrieval, run once with `--use-instruction` and once with `--no-instruction`.
-
-Run the ToolRet paper's LLM agent reranking baseline:
-
-```powershell
-uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline toolret-rankgpt --llm openai-compatible --top-k 10 --candidate-pool-size 100
-```
-
-`--baseline toolret-rankgpt` implements the ToolRet paper's RankGPT-style zero-shot LLM reranker over first-stage candidates produced by NV-Embed-v1. It requires `--first-stage-candidates` and intentionally does not fall back to this repo's hybrid retriever.
-
-Compare the paper-style LLM pipeline against the SkillSpec hybrid searcher in one run:
-
-```powershell
-uv run skill-agent eval-toolret --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --first-stage-candidates path/to/nv_embed_candidates.jsonl --baseline compare --llm openai-compatible --top-k 10 --candidate-pool-size 100
-```
-
-This comparison uses `SkillSpec`-derived tool documents for both sides. The hybrid side uses `SkillSearcher`; the LLM side uses the provided first-stage candidates followed by RankGPT-style reranking with the configured LLM.
-
-Build practical local first-stage candidates from the same `SkillSpec` representation:
-
-```powershell
-uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --output path/to/bge_candidates.jsonl --top-k 100 --model BAAI/bge-base-en-v1.5 --embedding-backend hf-transformers --max-length 512
-```
-
-This local-friendly path uses a standard Hugging Face encoder with mean pooling and writes the same candidate JSONL format consumed by `--first-stage-candidates`. It is not the ToolRet paper's NV-Embed-v1 first stage, but it is practical on consumer GPUs and useful for local comparisons.
-
-Build paper-faithful NV-Embed-v1 first-stage candidates from the same `SkillSpec` representation:
-
-```powershell
-uv run skill-agent build-toolret-candidates --queries path/to/toolret_queries.jsonl --tools path/to/toolret_tools.jsonl --output path/to/nv_embed_candidates.jsonl --top-k 100 --model nvidia/NV-Embed-v1
-```
-
-This command loads `nvidia/NV-Embed-v1` locally with Hugging Face Transformers and `trust_remote_code=True`, embeds queries and `SkillSpec`-derived tool documents, and writes candidate JSONL that can be passed to `--first-stage-candidates`. NV-Embed-v1 is a gated 7B model, so the local environment must have `torch`, `transformers`, and the Hugging Face model terms accepted/authenticated before this command can run. Authenticate with `uv run hf auth login` after accepting access to the model on Hugging Face. Model files are cached under `~/.cache/huggingface/hub/`, and remote model code is cached under `~/.cache/huggingface/modules/transformers_modules/`.
-
 ## SRA-Bench / SR-Agents
 
 The upstream benchmark is tracked as a submodule:
@@ -287,5 +193,5 @@ The project is in an early MVP state:
 - Milestone 3 is partial: search returns ranked skill cards from BM25, sparse-view, and optional dense RRF candidates with normalized score breakdowns and request capability/type hints; persistent filters, reranking, and search logs are not implemented.
 - Milestone 4 is partial: `skill_read` behavior exists, but a dedicated context builder and read logs are not implemented.
 - Milestone 5 now has an initial LLM-backed agent loop for search/read/final-answer workflows.
-- Milestone 6 has retrieval and ToolRet benchmark adapters.
+- Milestone 6 has retrieval and SRA-Bench benchmark adapters.
 - Milestone 7 is not implemented: optional skill invocation remains future work.

@@ -30,7 +30,7 @@ model = "BAAI/bge-small-en-v1.5"
 batch_size = 2
 max_length = 128
 device = "cpu"
-cache_dir = "data/eval/toolret/embedding_cache"
+cache_dir = "data/eval/sra/embedding_cache"
 
 [search]
 weight_lexical = 1.1
@@ -42,32 +42,6 @@ weight_usage = 0.6
 weight_input_type = 0.7
 weight_output_type = 0.8
 weight_penalty = 0.9
-
-[toolret]
-queries = "tests/fixtures/toolret_queries.jsonl"
-tools = "tests/fixtures/toolret_tools.jsonl"
-first_stage_candidates = "tests/fixtures/toolret_candidates.jsonl"
-subset = "apibank"
-category = "web"
-limit = 30
-top_k = 10
-use_instruction = true
-retrieval_mode = "hybrid"
-baseline = "toolret-rankgpt"
-llm = "mock"
-first_stage_model = "BAAI/bge-small-en-v1.5"
-first_stage_backend = "hf-transformers"
-embed_batch_size = 4
-embed_max_length = 256
-embed_device = "cpu"
-candidate_pool_size = 100
-rankgpt_window_size = 20
-rankgpt_step_size = 10
-workers = 4
-output = "toolret-result.json"
-checkpoint = "toolret-checkpoint.jsonl"
-resume = true
-max_runtime_seconds = 300.5
 
 [sra]
 skill_dirs = ["data/eval/sra/theoremQA", "data/eval/sra/web"]
@@ -90,28 +64,10 @@ skill_dirs = ["data/eval/sra/theoremQA", "data/eval/sra/web"]
     assert config.embedding.batch_size == 2
     assert config.embedding.max_length == 128
     assert config.embedding.device == "cpu"
-    assert config.embedding.cache_dir == "data/eval/toolret/embedding_cache"
+    assert config.embedding.cache_dir == "data/eval/sra/embedding_cache"
     assert config.search.weight_lexical == 1.1
     assert config.search.weight_dense == 0.3
     assert config.search.weight_penalty == 0.9
-    assert config.toolret.queries == "tests/fixtures/toolret_queries.jsonl"
-    assert config.toolret.tools == "tests/fixtures/toolret_tools.jsonl"
-    assert config.toolret.first_stage_candidates == "tests/fixtures/toolret_candidates.jsonl"
-    assert config.toolret.category == "web"
-    assert config.toolret.retrieval_mode == "hybrid"
-    assert config.toolret.baseline == "toolret-rankgpt"
-    assert config.toolret.first_stage_model == "BAAI/bge-small-en-v1.5"
-    assert config.toolret.first_stage_backend == "hf-transformers"
-    assert config.toolret.embed_batch_size == 4
-    assert config.toolret.embed_max_length == 256
-    assert config.toolret.embed_device == "cpu"
-    assert config.toolret.candidate_pool_size == 100
-    assert config.toolret.rankgpt_window_size == 20
-    assert config.toolret.rankgpt_step_size == 10
-    assert config.toolret.workers == 4
-    assert config.toolret.checkpoint == "toolret-checkpoint.jsonl"
-    assert config.toolret.resume is True
-    assert config.toolret.max_runtime_seconds == 300.5
     assert config.sra.skill_dirs == ["data/eval/sra/theoremQA", "data/eval/sra/web"]
 
 

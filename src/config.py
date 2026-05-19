@@ -54,33 +54,6 @@ class SearchConfig(BaseModel):
     weight_penalty: Optional[float] = None
 
 
-class ToolRetConfig(BaseModel):
-    queries: Optional[str] = None
-    tools: Optional[str] = None
-    first_stage_candidates: Optional[str] = None
-    subset: Optional[str] = None
-    category: str = "all"
-    limit: int = 30
-    top_k: int = 10
-    use_instruction: bool = True
-    retrieval_mode: Optional[str] = None
-    baseline: str = "hybrid"
-    llm: str = "mock"
-    first_stage_model: str = "BAAI/bge-base-en-v1.5"
-    first_stage_backend: str = "auto"
-    embed_batch_size: int = 8
-    embed_max_length: int = 512
-    embed_device: Optional[str] = None
-    candidate_pool_size: int = 100
-    rankgpt_window_size: int = 20
-    rankgpt_step_size: int = 10
-    workers: int = 1
-    output: Optional[str] = None
-    checkpoint: Optional[str] = None
-    resume: bool = False
-    max_runtime_seconds: Optional[float] = None
-
-
 class SraConfig(BaseModel):
     skill_dirs: list[str] = Field(default_factory=list)
 
@@ -90,7 +63,6 @@ class AppConfig(BaseModel):
     agent: AgentConfig = AgentConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     search: SearchConfig = SearchConfig()
-    toolret: ToolRetConfig = ToolRetConfig()
     sra: SraConfig = SraConfig()
 
 

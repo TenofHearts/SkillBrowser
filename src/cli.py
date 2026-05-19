@@ -11,7 +11,6 @@ from pydantic import BaseModel, ValidationError
 
 from agent import SkillAgent
 from benchmarks.retrieval_runner import run_eval_retrieval
-from benchmarks.toolret_runner import run_build_toolret_candidates, run_eval_toolret
 from config import load_app_config, load_app_config_if_exists
 from core.embeddings import build_embedder
 from core.search import SearchWeights, SkillSearcher
@@ -71,66 +70,6 @@ def build_parser() -> argparse.ArgumentParser:
     eval_retrieval.add_argument("--top-k", type=int, default=5)
     add_retrieval_arguments(eval_retrieval)
 
-    eval_toolret = sub.add_parser(
-        "eval-toolret",
-        help="Evaluate retrieval-only ToolRet queries against a ToolRet tool corpus",
-    )
-    eval_toolret.add_argument("--queries", help="ToolRet query JSONL/JSON/parquet export")
-    eval_toolret.add_argument("--tools", help="ToolRet tool JSONL/JSON/parquet export")
-    eval_toolret.add_argument(
-        "--first-stage-candidates",
-        help="Optional RankGPT first-stage candidate JSON/JSONL, e.g. NV-Embed-v1 candidates from ToolRet",
-    )
-    eval_toolret.add_argument("--subset", help="Optional ToolRet subset filter, e.g. apibank")
-    eval_toolret.add_argument("--category", choices=["all", "web", "code", "customized"])
-    eval_toolret.add_argument("--limit", type=int)
-    eval_toolret.add_argument("--top-k", type=int)
-    instruction_group = eval_toolret.add_mutually_exclusive_group()
-    instruction_group.add_argument("--use-instruction", dest="use_instruction", action="store_true")
-    instruction_group.add_argument("--no-instruction", dest="use_instruction", action="store_false")
-    eval_toolret.set_defaults(use_instruction=None)
-    eval_toolret.add_argument(
-        "--baseline",
-        choices=["hybrid", "hybrid-agent", "toolret-rankgpt", "compare"],
-    )
-    eval_toolret.add_argument("--candidate-pool-size", type=int)
-    eval_toolret.add_argument("--rankgpt-window-size", type=int)
-    eval_toolret.add_argument("--rankgpt-step-size", type=int)
-    eval_toolret.add_argument("--workers", type=int)
-    eval_toolret.add_argument("--llm", choices=["mock", "openai-compatible"])
-    eval_toolret.add_argument("--output", help="Optional path to write JSON result")
-    eval_toolret.add_argument("--checkpoint", help="Optional JSONL checkpoint path for per-query results")
-    eval_toolret.add_argument("--resume", action="store_true", help="Resume completed query results from --checkpoint")
-    eval_toolret.add_argument("--max-runtime-seconds", type=float, help="Stop scheduling new work after this many seconds")
-    eval_toolret.add_argument(
-        "--config",
-        default="config.toml",
-        help="TOML config file for defaults and openai-compatible LLM mode",
-    )
-    add_retrieval_arguments(eval_toolret, include_config=False)
-
-    build_toolret_candidates = sub.add_parser(
-        "build-toolret-candidates",
-        help="Build ToolRet first-stage candidates with NV-Embed-v1 over SkillSpec documents",
-    )
-    build_toolret_candidates.add_argument("--queries", required=True, help="ToolRet query JSONL/JSON/parquet export")
-    build_toolret_candidates.add_argument("--tools", required=True, help="ToolRet tool JSONL/JSON/parquet export")
-    build_toolret_candidates.add_argument("--output", required=True, help="Path to write candidate JSONL")
-    build_toolret_candidates.add_argument("--config", default="config.toml", help="TOML config file for defaults")
-    build_toolret_candidates.add_argument("--subset", help="Optional ToolRet subset filter, e.g. apibank")
-    build_toolret_candidates.add_argument("--category", choices=["all", "web", "code", "customized"], default="all")
-    build_toolret_candidates.add_argument("--limit", type=int)
-    build_toolret_candidates.add_argument("--top-k", type=int, default=100)
-    build_candidates_instruction_group = build_toolret_candidates.add_mutually_exclusive_group()
-    build_candidates_instruction_group.add_argument("--use-instruction", dest="use_instruction", action="store_true")
-    build_candidates_instruction_group.add_argument("--no-instruction", dest="use_instruction", action="store_false")
-    build_toolret_candidates.set_defaults(use_instruction=True)
-    build_toolret_candidates.add_argument("--model")
-    build_toolret_candidates.add_argument("--embedding-backend", choices=["auto", "nv-embed", "hf-transformers"])
-    build_toolret_candidates.add_argument("--batch-size", type=int)
-    build_toolret_candidates.add_argument("--max-length", type=int)
-    build_toolret_candidates.add_argument("--device", help="Optional torch device, e.g. cuda:0 or cpu")
-
     return parser
 
 
@@ -139,14 +78,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.command == "build-toolret-candidates":
-            print_json(run_build_toolret_candidates(args))
-            return 0
-
-        if args.command == "eval-toolret":
-            print_json(run_eval_toolret(args, build_llm))
-            return 0
-
         skills = load_skills(Path(args.skill_dir))
         if args.command == "validate-skills":
             print(json.dumps({"ok": True, "skill_count": len(skills), "skill_ids": [s.id for s in skills]}, indent=2))

@@ -222,7 +222,8 @@ skill-search-agent/
 │   │   └── id_map.json
 │   │
 │   └── eval/
-│       ├── toolret/
+│       ├── sra/
+│       ├── local_retrieval/
 │       ├── synthetic_tasks/
 │       └── results/
 │
@@ -278,7 +279,7 @@ skill-search-agent/
 │       │
 │       ├── eval/
 │       │   ├── metrics.py
-│       │   ├── toolret_adapter.py
+│       │   ├── sra_adapter.py
 │       │   ├── synthetic_benchmark.py
 │       │   └── run_eval.py
 │       │
@@ -1836,7 +1837,7 @@ Acceptance criteria:
 Implement:
 
 ```text
-ToolRet-style retrieval evaluation
+retrieval evaluation
 read-selection evaluation
 skill-augmented task performance evaluation
 synthetic skill benchmark
@@ -1895,7 +1896,7 @@ Use a staged validation strategy.
 Primary benchmark:
 
 ```text
-ToolRet-style tool retrieval benchmark
+local skill retrieval benchmark
 plus unsupported-intent / no-suitable-skill examples
 ```
 
@@ -1908,29 +1909,6 @@ Evaluate end-to-end skill_search quality:
   + deterministic filtering and abstention
 
 Abstention is evaluated as behavior of the search algorithm, not as an LLM judgment.
-```
-
-If directly adapting ToolRet:
-
-```text
-ToolRet tool corpus → local skill specs
-ToolRet queries → LLM-authored or adapter-authored structured SkillSearchRequest objects
-Gold tools → gold skills
-Unsupported examples → gold empty result with required abstention
-```
-
-Required adapter:
-
-```python
-class ToolRetAdapter:
-    def convert_tool_to_skill(self, tool_doc: dict) -> SkillSpec:
-        ...
-
-    def convert_query_to_search_request(self, sample: dict) -> SkillSearchRequest:
-        ...
-
-    def get_gold_skill_ids(self, sample: dict) -> list[str]:
-        ...
 ```
 
 Metrics:
@@ -2265,7 +2243,7 @@ Please implement this project in the following order:
 14. Implement mock skills for testing.
 15. Implement agent loop with skill_search and skill_read.
 16. Implement evaluation metrics.
-17. Implement ToolRet-style adapter interface.
+17. Implement benchmark adapter interface.
 18. Implement synthetic benchmark generator.
 19. Add tests.
 20. Add CLI commands.
@@ -2292,7 +2270,7 @@ skill-agent invoke pdf.extract_text --args '{"file_path": "sample.pdf"}'  # only
 
 skill-agent run-task --task-file data/eval/synthetic_tasks/task_001.json
 
-skill-agent eval-retrieval --dataset data/eval/toolret --method hybrid
+skill-agent eval-retrieval --dataset data/eval/local_retrieval --method hybrid
 
 skill-agent eval-read-selection --dataset data/eval/synthetic_tasks --method hybrid
 

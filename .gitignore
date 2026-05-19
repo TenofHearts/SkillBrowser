@@ -8,7 +8,6 @@ data/models/
 data/**/*.log
 data/**/logs/
 data/**/results/
-data/eval/toolret/results/
 data/eval/sra/
 data/**/result*.json
 data/**/embedding_cache/
