@@ -1,7 +1,13 @@
-"""Run SRA-Bench with this project's Hybrid skill searcher.
+"""Run SRA-Bench with this project's SkillBrowser skill searcher.
 
-This script keeps SR-Agents as a git submodule while producing retrieval files
-that its native infer/evaluate stages can consume.
+The canonical SkillBrowser agent method is the LLM retrieval-intent path
+(`run-decision-agent` / `infer-decision-agent`): the requested model writes a
+retrieval query, SkillBrowser hybrid search retrieves skills, and an SR-Agents
+engine solves the task.
+
+The staged `retrieve` command is a deterministic prompt-query baseline. It
+builds queries with SR-Agents prompt concatenation and writes retrieval files
+that native SR-Agents infer/evaluate stages can consume.
 """
 
 from __future__ import annotations
@@ -78,10 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
     preprocess.add_argument("--resume", action="store_true")
     preprocess.add_argument("--force", action="store_true")
 
-    retrieve = sub.add_parser("retrieve", help="Run SkillBrowser Hybrid retrieval on SRA-Bench")
+    retrieve = sub.add_parser(
+        "retrieve",
+        help="Run deterministic prompt-query SkillBrowser retrieval baseline (no LLM query writer)",
+    )
     add_common_retrieval_args(retrieve)
 
-    infer = sub.add_parser("infer", help="Run SR-Agents inference using a Hybrid retrieval file")
+    infer = sub.add_parser("infer", help="Run SR-Agents inference using a staged retrieval file")
     add_common_infer_args(infer)
 
     infer_agent = sub.add_parser("infer-agent", help="Run the local SRA general-purpose skill_search agent")
@@ -89,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     infer_decision_agent = sub.add_parser(
         "infer-decision-agent",
-        help="Run LLM skill-search decision, then solve with an SR-Agents engine",
+        help="Run SkillBrowser agent: LLM retrieval intent, hybrid search, then solve",
     )
     add_common_decision_agent_infer_args(infer_decision_agent)
 
@@ -102,7 +111,10 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="Run retrieve, infer, and evaluate per instance")
     add_common_e2e_args(run)
 
-    run_staged = sub.add_parser("run-staged", help="Run staged prepare, retrieve, infer, and evaluate")
+    run_staged = sub.add_parser(
+        "run-staged",
+        help="Run deterministic prompt-query retrieval baseline, inference, and evaluation",
+    )
     add_common_retrieval_args(run_staged)
     add_common_infer_args(
         run_staged,
@@ -122,7 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_decision_agent = sub.add_parser(
         "run-decision-agent",
-        help="Run search-decision agent inference, evaluation, and summary",
+        help="Run SkillBrowser agent inference, evaluation, and summary",
     )
     add_common_decision_agent_infer_args(run_decision_agent)
     add_common_eval_args(run_decision_agent, include_dataset=False, include_input=False, include_instances=False)
@@ -354,7 +366,7 @@ def infer(args: argparse.Namespace) -> Path:
         if "sragents_bm25" in retrieval_name or "sragents-bm25" in retrieval_name:
             label = f"sragents_bm25_top{args.provider_k}_{args.engine}"
         else:
-            label = f"skillbrowser_hybrid_top{args.provider_k}_{args.engine}"
+            label = f"skillbrowser_prompt_hybrid_top{args.provider_k}_{args.engine}"
     else:
         command.extend(["--provider-arg", f"corpus_path={corpus_path}"])
         label = f"oracle_{args.engine}"
@@ -446,6 +458,7 @@ def infer_decision_agent(args: argparse.Namespace) -> Path:
         force=args.force,
         sra_repo=ROOT / SRA_SUBMODULE_DIR,
         solve_engine_name=args.solve_engine,
+        method=f"skillbrowser_agent_top{args.agent_top_k}_{args.solve_engine}",
         workers=args.workers,
     )
     print(json.dumps(result, indent=2))
@@ -495,7 +508,7 @@ def run_e2e(args: argparse.Namespace) -> Path:
 
     client = create_llm_client(api_base=args.api_base or config.llm.base_url, api_key=config.llm.api_key)
     engine = get_engine(args.engine, temperature=args.temperature, max_tokens=args.max_tokens)
-    label = f"skillbrowser_e2e_hybrid_top{args.top_k}_{args.engine}"
+    label = f"skillbrowser_prompt_hybrid_top{args.top_k}_{args.engine}"
     model_name = Path(args.model).name.replace(":", "_")
     completed_records = _load_e2e_records(e2e_output)
     details = [record["evaluation"] for record in completed_records if record.get("evaluation")]
@@ -858,12 +871,12 @@ def default_instances(dataset: str) -> Path:
 
 
 def default_retrieval_output(dataset: str) -> Path:
-    return ROOT / SRA_RESULTS_DIR / "retrieval" / f"{dataset}-skillbrowser-hybrid.json"
+    return ROOT / SRA_RESULTS_DIR / "retrieval" / f"{dataset}-skillbrowser-prompt-hybrid.json"
 
 
 def default_inference_output(dataset: str, model: str, provider_k: int) -> Path:
     model_name = Path(model).name.replace(":", "_")
-    return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-hybrid_top{provider_k}.jsonl"
+    return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-prompt_hybrid_top{provider_k}.jsonl"
 
 
 def default_agent_inference_output(dataset: str, model: str, agent_top_k: int) -> Path:
@@ -878,18 +891,18 @@ def default_decision_agent_inference_output(dataset: str, model: str, agent_top_
         ROOT
         / SRA_RESULTS_DIR
         / "inference"
-        / f"{dataset}-{model_name}-search_decision_top{agent_top_k}_{engine_name}.jsonl"
+        / f"{dataset}-{model_name}-skillbrowser_agent_top{agent_top_k}_{engine_name}.jsonl"
     )
 
 
 def default_e2e_output(dataset: str, model: str, top_k: int) -> Path:
     model_name = Path(model).name.replace(":", "_")
-    return ROOT / SRA_RESULTS_DIR / "e2e" / f"{dataset}-{model_name}-hybrid_top{top_k}-e2e.jsonl"
+    return ROOT / SRA_RESULTS_DIR / "e2e" / f"{dataset}-{model_name}-prompt_hybrid_top{top_k}-e2e.jsonl"
 
 
 def default_e2e_inference_output(dataset: str, model: str, top_k: int) -> Path:
     model_name = Path(model).name.replace(":", "_")
-    return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-hybrid_top{top_k}-e2e.jsonl"
+    return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-prompt_hybrid_top{top_k}-e2e.jsonl"
 
 
 def default_eval_output(dataset: str, inference: Path) -> Path:

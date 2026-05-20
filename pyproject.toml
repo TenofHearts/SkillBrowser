@@ -2,7 +2,7 @@
 name = "skill-search-agent"
 version = "0.1.0"
 description = "Local skill search and reading MVP"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "datasets>=4.5.0",
     "pydantic>=1.10,<2",
@@ -11,21 +11,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cpu = [
-    "accelerate>=1.10.1",
-    "einops>=0.8.2",
-    "torch==2.8.0",
-]
-cu128 = [
-    "accelerate>=1.10.1",
-    "einops>=0.8.2",
-    "torch==2.8.0",
-]
+cpu = ["accelerate>=1.10.1", "einops>=0.8.2", "torch==2.8.0"]
+cu128 = ["accelerate>=1.10.1", "einops>=0.8.2", "torch==2.8.0"]
 
 [dependency-groups]
-dev = [
-    "pytest>=8.0",
-]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 skill-agent = "cli:main"
@@ -43,12 +33,7 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.uv]
-conflicts = [
-    [
-        { extra = "cpu" },
-        { extra = "cu128" },
-    ],
-]
+conflicts = [[{ extra = "cpu" }, { extra = "cu128" }]]
 
 [tool.uv.sources]
 torch = [

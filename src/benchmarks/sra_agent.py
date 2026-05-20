@@ -333,7 +333,7 @@ class SRASearchDecisionAgent:
         model_name: str,
         top_k: int = 5,
         sra_repo: str | Path = SRA_SUBMODULE_DIR,
-        method: str = "skillbrowser_search_decision_agent",
+        method: str = "skillbrowser_agent_top5_direct",
         solve_engine_name: str = "direct",
     ):
         self.searcher = searcher
@@ -530,6 +530,7 @@ def run_sra_search_decision_inference(
     force: bool = False,
     sra_repo: str | Path = SRA_SUBMODULE_DIR,
     solve_engine_name: str = "direct",
+    method: str | None = None,
     workers: int = 1,
 ) -> dict[str, Any]:
     instances = load_sra_instances(instances_path)
@@ -551,6 +552,7 @@ def run_sra_search_decision_inference(
         model_name=model_name,
         top_k=top_k,
         sra_repo=sra_repo,
+        method=method or f"skillbrowser_agent_top{top_k}_{solve_engine_name}",
         solve_engine_name=solve_engine_name,
     )
 
