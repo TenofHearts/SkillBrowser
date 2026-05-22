@@ -85,8 +85,11 @@ class OpenAICompatibleLLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
         }
+        payload[_max_tokens_param(self.model)] = self.max_tokens
+        extra_body = get_extra_body(self.model)
+        if extra_body:
+            payload.update(extra_body)
         request = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
@@ -140,3 +143,19 @@ def _extract_usage(
         if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
             return prompt_tokens, completion_tokens, "provider"
     return estimate_message_tokens(messages), estimate_text_tokens(content), "estimated"
+
+
+def get_extra_body(model: str) -> dict[str, object] | None:
+    """Return provider-specific OpenAI-compatible request options."""
+
+    basename = model.lower().rsplit("/", 1)[-1]
+    if "qwen3" in basename:
+        return {"enable_thinking": False}
+    return None
+
+
+def _max_tokens_param(model: str) -> str:
+    basename = model.lower().rsplit("/", 1)[-1]
+    if basename.startswith("gpt-5"):
+        return "max_completion_tokens"
+    return "max_tokens"

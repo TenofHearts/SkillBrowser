@@ -208,7 +208,6 @@ def add_common_agent_infer_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--agent-top-k", type=int, default=5, help="Number of search candidates returned to the agent")
     parser.add_argument("--max-rounds", type=int, default=6, help="Maximum LLM/tool rounds per instance")
     parser.add_argument("--limit", type=int, help="Optional instance limit for smoke tests")
-    parser.add_argument("--inject-full-search-skill", action="store_true")
     parser.add_argument("--llm", choices=["mock", "openai-compatible"], default="openai-compatible")
     parser.add_argument("--model", required=True, help="Model identifier recorded in inference output")
     parser.add_argument("--api-base", help="OpenAI-compatible endpoint override")
@@ -418,7 +417,6 @@ def infer_agent(args: argparse.Namespace) -> Path:
         top_k=args.agent_top_k,
         max_rounds=args.max_rounds,
         limit=args.limit,
-        inject_full_search_skill=args.inject_full_search_skill,
         force=args.force,
         sra_repo=ROOT / SRA_SUBMODULE_DIR,
     )
