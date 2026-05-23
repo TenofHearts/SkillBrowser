@@ -33,6 +33,7 @@ device = "cpu"
 cache_dir = "data/eval/sra/embedding_cache"
 
 [search]
+minimum_score_threshold = 1.15
 weight_lexical = 1.1
 weight_sparse_view = 0.2
 weight_dense = 0.3
@@ -65,6 +66,7 @@ skill_dirs = ["data/eval/sra/theoremQA", "data/eval/sra/web"]
     assert config.embedding.max_length == 128
     assert config.embedding.device == "cpu"
     assert config.embedding.cache_dir == "data/eval/sra/embedding_cache"
+    assert config.search.minimum_score_threshold == 1.15
     assert config.search.weight_lexical == 1.1
     assert config.search.weight_dense == 0.3
     assert config.search.weight_penalty == 0.9

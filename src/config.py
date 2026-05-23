@@ -43,6 +43,7 @@ class EmbeddingConfig(BaseModel):
 
 
 class SearchConfig(BaseModel):
+    minimum_score_threshold: float = 0.0
     weight_lexical: Optional[float] = None
     weight_sparse_view: Optional[float] = None
     weight_dense: Optional[float] = None

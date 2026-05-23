@@ -166,6 +166,11 @@ def add_retrieval_arguments(parser: argparse.ArgumentParser, *, include_config: 
     parser.add_argument("--weight-input-type", type=float)
     parser.add_argument("--weight-output-type", type=float)
     parser.add_argument("--weight-penalty", type=float)
+    parser.add_argument(
+        "--minimum-score-threshold",
+        type=float,
+        help="Exclude skills whose final search score is less than or equal to this threshold.",
+    )
     if include_config:
         parser.add_argument("--config", default="config.toml", help="TOML config file for retrieval defaults")
 
@@ -210,6 +215,7 @@ def build_searcher(
         sparse_view_enabled=sparse_view_enabled,
         dense_view_names=dense_view_names,
         weights=build_search_weights(args),
+        minimum_score_threshold=build_minimum_score_threshold(args),
         dense_cache_dir=getattr(args, "embedding_cache_dir", None) or embedding_config.cache_dir,
     )
 
@@ -268,6 +274,14 @@ def build_search_weights(args: argparse.Namespace) -> SearchWeights:
         ),
         penalty=_configured_weight(args, search_config, "weight_penalty", defaults.penalty),
     )
+
+
+def build_minimum_score_threshold(args: argparse.Namespace) -> float:
+    config = load_app_config_if_exists(getattr(args, "config", "config.toml"))
+    cli_value = getattr(args, "minimum_score_threshold", None)
+    if cli_value is not None:
+        return cli_value
+    return config.search.minimum_score_threshold
 
 
 def _configured_weight(args: argparse.Namespace, search_config, name: str, default: float) -> float:

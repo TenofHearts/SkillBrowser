@@ -22,6 +22,7 @@ device = ""
 cache_dir = "data/eval/sra/embedding_cache"
 
 [search]
+minimum_score_threshold = 0.0
 weight_lexical = 1.0
 weight_sparse_view = 0.35
 weight_dense = 0.45

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,7 +13,7 @@ from benchmarks.retrieval import (
     load_retrieval_dataset,
     score_retrieval_result,
 )
-from cli import main
+from cli import build_searcher, main
 from core.embeddings import FakeSemanticEmbedder
 from core.search import SkillSearcher, rrf_fusion
 from loader import SkillLoadError, load_skills
@@ -36,6 +37,21 @@ def test_search_returns_relevant_skill() -> None:
     assert response.results[0].id == "pdf.extract_text"
     assert response.results[0].execution_available is True
     assert response.results[0].read_recommendation in response.results[0].available_sections
+
+
+def test_search_filters_results_at_minimum_score_threshold() -> None:
+    skills = load_skills(SKILL_DIR)
+    baseline = SkillSearcher(skills).search(SkillSearchRequest(query="extract text from a PDF"), top_k=1)
+    threshold = baseline.results[0].score
+
+    response = SkillSearcher(skills, minimum_score_threshold=threshold).search(
+        SkillSearchRequest(query="extract text from a PDF"),
+        top_k=1,
+    )
+
+    assert response.results == []
+    assert response.abstained is True
+    assert response.abstention_reason == "no_candidate_above_threshold"
 
 
 def test_search_penalizes_when_not_to_use_matches() -> None:
@@ -203,6 +219,32 @@ def test_search_top_k_is_configured_outside_structured_request() -> None:
     response = SkillSearcher(skills).search(SkillSearchRequest(query="paper PDF analysis"), top_k=1)
 
     assert len(response.results) == 1
+
+
+def test_build_searcher_uses_cli_minimum_score_threshold_over_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[search]
+minimum_score_threshold = 99.0
+""",
+        encoding="utf-8",
+    )
+    args = argparse.Namespace(
+        config=str(config_path),
+        retrieval_mode="bm25",
+        embedding_backend=None,
+        embedding_model=None,
+        embedding_batch_size=None,
+        embedding_max_length=None,
+        embedding_device=None,
+        embedding_cache_dir=None,
+        minimum_score_threshold=1.15,
+    )
+
+    searcher = build_searcher(load_skills(SKILL_DIR), args)
+
+    assert searcher.minimum_score_threshold == 1.15
 
 
 def test_hybrid_combines_dense_and_sparse_rank_lists() -> None:
