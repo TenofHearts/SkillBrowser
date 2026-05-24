@@ -2,7 +2,7 @@
 
 The canonical SkillBrowser agent method is the LLM retrieval-intent path
 (`run-decision-agent` / `infer-decision-agent`): the requested model writes a
-retrieval query, SkillBrowser hybrid search retrieves skills, and an SR-Agents
+retrieval query, SkillBrowser search retrieves skills, and an SR-Agents
 engine solves the task.
 
 The staged `retrieve` command is a deterministic prompt-query baseline. It
@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     infer_decision_agent = sub.add_parser(
         "infer-decision-agent",
-        help="Run SkillBrowser agent: LLM retrieval intent, hybrid search, then solve",
+        help="Run SkillBrowser agent: LLM retrieval intent, SkillBrowser search, then solve",
     )
     add_common_decision_agent_infer_args(infer_decision_agent)
 
@@ -438,6 +438,7 @@ def infer_decision_agent(args: argparse.Namespace) -> Path:
             args.model,
             args.agent_top_k,
             args.solve_engine,
+            getattr(args, "retrieval_mode", None),
         )
     )
     decision_llm = build_agent_llm(args)
@@ -456,7 +457,11 @@ def infer_decision_agent(args: argparse.Namespace) -> Path:
         force=args.force,
         sra_repo=ROOT / SRA_SUBMODULE_DIR,
         solve_engine_name=args.solve_engine,
-        method=f"skillbrowser_agent_top{args.agent_top_k}_{args.solve_engine}",
+        method=decision_agent_method_name(
+            args.agent_top_k,
+            args.solve_engine,
+            getattr(args, "retrieval_mode", None),
+        ),
         workers=args.workers,
     )
     print(json.dumps(result, indent=2))
@@ -882,14 +887,29 @@ def default_agent_inference_output(dataset: str, model: str, agent_top_k: int) -
     return ROOT / SRA_RESULTS_DIR / "inference" / f"{dataset}-{model_name}-general_agent_top{agent_top_k}.jsonl"
 
 
-def default_decision_agent_inference_output(dataset: str, model: str, agent_top_k: int, solve_engine: str) -> Path:
-    model_name = Path(model).name.replace(":", "_")
+def decision_agent_method_name(agent_top_k: int, solve_engine: str, retrieval_mode: str | None = None) -> str:
     engine_name = solve_engine.replace(":", "_")
+    mode = (retrieval_mode or "").strip().lower()
+    if not mode or mode == "hybrid":
+        return f"skillbrowser_agent_top{agent_top_k}_{engine_name}"
+    mode_name = mode.replace(":", "_").replace("-", "_")
+    return f"skillbrowser_agent_{mode_name}_top{agent_top_k}_{engine_name}"
+
+
+def default_decision_agent_inference_output(
+    dataset: str,
+    model: str,
+    agent_top_k: int,
+    solve_engine: str,
+    retrieval_mode: str | None = None,
+) -> Path:
+    model_name = Path(model).name.replace(":", "_")
+    method_name = decision_agent_method_name(agent_top_k, solve_engine, retrieval_mode)
     return (
         ROOT
         / SRA_RESULTS_DIR
         / "inference"
-        / f"{dataset}-{model_name}-skillbrowser_agent_top{agent_top_k}_{engine_name}.jsonl"
+        / f"{dataset}-{model_name}-{method_name}.jsonl"
     )
 
 

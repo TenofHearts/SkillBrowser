@@ -26,7 +26,11 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from sra_bench import main as sra_bench_main  # noqa: E402
+from sra_bench import (  # noqa: E402
+    decision_agent_method_name,
+    default_decision_agent_inference_output,
+    main as sra_bench_main,
+)
 
 
 def _corpus() -> list[dict]:
@@ -436,6 +440,30 @@ def test_sra_bench_infer_decision_agent_cli_smoke(tmp_path: Path, capsys) -> Non
     assert exit_code == 0
     assert output.exists()
     assert '"inference_output"' in captured.out
+    record = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    assert record["method"] == "skillbrowser_agent_bm25_top5_direct"
+
+
+def test_decision_agent_default_output_names_retrieval_mode() -> None:
+    default_output = default_decision_agent_inference_output(
+        "theoremqa",
+        "provider/mock:model",
+        5,
+        "direct",
+    )
+    bm25_output = default_decision_agent_inference_output(
+        "theoremqa",
+        "provider/mock:model",
+        5,
+        "direct",
+        "bm25",
+    )
+
+    assert decision_agent_method_name(5, "direct") == "skillbrowser_agent_top5_direct"
+    assert decision_agent_method_name(5, "direct", "hybrid") == "skillbrowser_agent_top5_direct"
+    assert decision_agent_method_name(5, "direct", "bm25") == "skillbrowser_agent_bm25_top5_direct"
+    assert default_output.name == "theoremqa-mock_model-skillbrowser_agent_top5_direct.jsonl"
+    assert bm25_output.name == "theoremqa-mock_model-skillbrowser_agent_bm25_top5_direct.jsonl"
 
 
 def _write_instances(tmp_path: Path, instances: list[dict]) -> Path:

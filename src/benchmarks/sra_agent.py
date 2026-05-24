@@ -1,4 +1,4 @@
-"""General-purpose SRA agent loop backed by the local hybrid skill searcher."""
+"""General-purpose SRA agent loop backed by the local SkillBrowser searcher."""
 
 from __future__ import annotations
 
@@ -358,7 +358,7 @@ class SRAGeneralPurposeAgent:
 
 
 class SRASearchDecisionAgent:
-    """Route through hybrid search, then solve with an upstream SRA engine."""
+    """Route through SkillBrowser search, then solve with an upstream SRA engine."""
 
     def __init__(
         self,
