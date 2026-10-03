@@ -292,6 +292,36 @@ def test_search_decision_agent_can_skip_search_and_still_solve() -> None:
     assert engine.calls[0][1] == []
 
 
+def test_search_decision_agent_gold_on_search_exposes_gold_without_retrieval() -> None:
+    llm = MockLLMClient(
+        ['<tool>{"tool":"skill_search","operation":"search",'
+         '"retrieval_intent":{"query":"unrelated query"}}</tool>']
+    )
+    engine = _FakeSolveEngine()
+
+    class _FailIfSearched:
+        def search(self, *_args, **_kwargs):
+            raise AssertionError("retrieval must not run in gold_on_search mode")
+
+    agent = SRASearchDecisionAgent(
+        searcher=_FailIfSearched(),
+        corpus=_corpus(),
+        decision_llm=llm,
+        solve_engine=engine,
+        solve_client=None,
+        model_name="mock-model",
+        top_k=2,
+        exposure_mode="gold_on_search",
+    )
+
+    record = agent.run_instance(_instance())
+
+    assert record.meta["route"] == "search"
+    assert record.meta["exposure_mode"] == "gold_on_search"
+    assert record.meta["retrieved_skill_ids"] == ["theoremqa_001"]
+    assert engine.calls[0][1][0]["skill_id"] == "theoremqa_001"
+
+
 def test_sra_agent_inference_jsonl_schema_and_metrics(tmp_path: Path) -> None:
     output = tmp_path / "inference.jsonl"
     llm = MockLLMClient(

@@ -201,7 +201,7 @@ class SkillSearcher:
             if self.bm25_enabled
             else [0.0 for _ in self.doc_tokens]
         )
-        lexical_rank = _rank_scores(lexical_raw)
+        lexical_rank = _rank_scores(lexical_raw, limit=self.recall_k)
         sparse_view_raw = (
             {
                 view_name: self._sparse_view_scores(query_tokens, view_name)
@@ -210,9 +210,9 @@ class SkillSearcher:
             if self.sparse_view_enabled
             else {}
         )
-        sparse_view_ranks = [_rank_scores(scores) for scores in sparse_view_raw.values()]
+        sparse_view_ranks = [_rank_scores(scores, limit=self.recall_k) for scores in sparse_view_raw.values()]
         dense_raw = self._dense_view_scores(request)
-        dense_ranks = [_rank_scores(scores) for scores in dense_raw.values()]
+        dense_ranks = [_rank_scores(scores, limit=self.recall_k) for scores in dense_raw.values()]
         rrf_raw = self._rrf_fuse([lexical_rank, *sparse_view_ranks, *dense_ranks])
         rrf_norm = _normalize_by_max(rrf_raw)
         lexical_norm = _normalize_by_max(lexical_raw)
@@ -747,9 +747,11 @@ def rrf_fusion(rank_lists: list[list[str]], k: int = 60) -> dict[str, float]:
     return dict(scores)
 
 
-def _rank_scores(scores: list[float]) -> list[_RankedScore]:
+def _rank_scores(scores: list[float], *, limit: int | None = None) -> list[_RankedScore]:
     ranked = [_RankedScore(index, score) for index, score in enumerate(scores) if score > 0]
     ranked.sort(key=lambda item: item.score, reverse=True)
+    if limit is not None:
+        return ranked[:limit]
     return ranked
 
 
@@ -798,7 +800,12 @@ def _cosine_with_norms(
 
 def _read_dense_cache(path: Path) -> list[list[float]] | None:
     try:
-        return [json.loads(line)["vector"] for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        vectors = []
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    vectors.append(json.loads(line)["vector"])
+        return vectors
     except (OSError, KeyError, TypeError, json.JSONDecodeError):
         return None
 

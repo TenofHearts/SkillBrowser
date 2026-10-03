@@ -373,6 +373,7 @@ class SRASearchDecisionAgent:
         sra_repo: str | Path = SRA_SUBMODULE_DIR,
         method: str = "skillbrowser_agent_top5_direct",
         solve_engine_name: str = "direct",
+        exposure_mode: str = "retrieval",
     ):
         self.searcher = searcher
         self.corpus_by_id = {
@@ -388,6 +389,9 @@ class SRASearchDecisionAgent:
         self.sra_repo = Path(sra_repo)
         self.method = method
         self.solve_engine_name = solve_engine_name
+        if exposure_mode not in {"retrieval", "gold_on_search"}:
+            raise ValueError(f"Unsupported exposure mode: {exposure_mode}")
+        self.exposure_mode = exposure_mode
 
     def run_instance(self, instance: dict[str, Any]) -> SRAAgentRecord:
         started = time.perf_counter()
@@ -420,7 +424,11 @@ class SRASearchDecisionAgent:
             if call and call.get("operation") == "search":
                 search_call_count = 1
                 route = "search"
-                retrieved_skill_ids = self._search(call)
+                retrieved_skill_ids = (
+                    _gold_skill_ids(instance)
+                    if self.exposure_mode == "gold_on_search"
+                    else self._search(call)
+                )
                 skills = [
                     self.corpus_by_id[skill_id]
                     for skill_id in retrieved_skill_ids
@@ -458,8 +466,30 @@ class SRASearchDecisionAgent:
             if solve_transcript:
                 transcript_parts.append(f"SOLVE_TRANSCRIPT:\n{solve_transcript}")
 
+            solve_meta = getattr(solve_result, "meta", {}) or {}
+            solve_usage = {}
+            if isinstance(solve_meta, dict):
+                solve_usage = (solve_meta.get("llm_usage") or {}).get("solve") or {}
+            decision_usage = {
+                "calls": 1,
+                "prompt_tokens": decision.input_tokens,
+                "completion_tokens": decision.output_tokens,
+                "total_tokens": decision.input_tokens + decision.output_tokens,
+                "source": decision.token_usage_source,
+            }
+            total_usage = {
+                "calls": int(decision_usage.get("calls") or 0) + int(solve_usage.get("calls") or 0),
+                "prompt_tokens": int(decision_usage.get("prompt_tokens") or 0)
+                + int(solve_usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(decision_usage.get("completion_tokens") or 0)
+                + int(solve_usage.get("completion_tokens") or 0),
+                "total_tokens": int(decision_usage.get("total_tokens") or 0)
+                + int(solve_usage.get("total_tokens") or 0),
+            }
+
             meta = {
                 "route": route,
+                "exposure_mode": self.exposure_mode,
                 "search_call_count": search_call_count,
                 "load_call_count": 0,
                 "retrieved_skill_ids": retrieved_skill_ids,
@@ -473,7 +503,12 @@ class SRASearchDecisionAgent:
                 "decision_latency_ms": decision.elapsed_ms,
                 "decision_token_usage_source": decision.token_usage_source,
                 "solve_engine": self.solve_engine_name,
-                "solve_meta": getattr(solve_result, "meta", {}) or {},
+                "solve_meta": solve_meta,
+                "llm_usage": {
+                    "decision": decision_usage,
+                    "solve": solve_usage,
+                    "total": total_usage,
+                },
                 "wall_time_ms": round((time.perf_counter() - started) * 1000),
             }
             return SRAAgentRecord(
@@ -586,6 +621,7 @@ def run_sra_search_decision_inference(
     solve_engine_name: str = "direct",
     method: str | None = None,
     workers: int = 1,
+    exposure_mode: str = "retrieval",
 ) -> dict[str, Any]:
     instances = load_sra_instances(instances_path)
     if limit is not None:
@@ -610,6 +646,7 @@ def run_sra_search_decision_inference(
         sra_repo=sra_repo,
         method=method or f"skillbrowser_agent_top{top_k}_{solve_engine_name}",
         solve_engine_name=solve_engine_name,
+        exposure_mode=exposure_mode,
     )
 
     written = 0

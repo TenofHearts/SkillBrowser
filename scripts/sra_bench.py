@@ -211,6 +211,7 @@ def add_common_agent_infer_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--llm", choices=["mock", "openai-compatible"], default="openai-compatible")
     parser.add_argument("--model", required=True, help="Model identifier recorded in inference output")
     parser.add_argument("--api-base", help="OpenAI-compatible endpoint override")
+    parser.add_argument("--api-key-env", help="Environment variable containing the API key override")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--workers", type=int, default=1, help="Parallel workers for agent-style runs that support it")
@@ -242,6 +243,12 @@ def add_common_e2e_args(parser: argparse.ArgumentParser) -> None:
 def add_common_decision_agent_infer_args(parser: argparse.ArgumentParser) -> None:
     add_common_agent_infer_args(parser)
     parser.add_argument("--solve-engine", default="direct", help="SR-Agents engine used after the decision phase")
+    parser.add_argument(
+        "--exposure-mode",
+        choices=["retrieval", "gold_on_search"],
+        default="retrieval",
+        help="Skills exposed after a search decision: actual retrieval or the instance Gold Skill",
+    )
 
 
 def add_common_agent_summary_args(parser: argparse.ArgumentParser) -> None:
@@ -427,8 +434,11 @@ def infer_agent(args: argparse.Namespace) -> Path:
 
 def infer_decision_agent(args: argparse.Namespace) -> Path:
     corpus = load_sra_corpus(args.corpus)
-    skills = load_sra_search_specs(args, corpus)
-    searcher = build_sra_searcher(skills, args)
+    if args.exposure_mode == "gold_on_search":
+        searcher = None
+    else:
+        skills = load_sra_search_specs(args, corpus)
+        searcher = build_sra_searcher(skills, args)
     instances = Path(args.instances) if args.instances else default_instances(args.dataset)
     output = (
         Path(args.inference_output)
@@ -457,12 +467,17 @@ def infer_decision_agent(args: argparse.Namespace) -> Path:
         force=args.force,
         sra_repo=ROOT / SRA_SUBMODULE_DIR,
         solve_engine_name=args.solve_engine,
-        method=decision_agent_method_name(
-            args.agent_top_k,
-            args.solve_engine,
-            getattr(args, "retrieval_mode", None),
+        method=(
+            f"meta_skill_gold_{args.solve_engine}"
+            if args.exposure_mode == "gold_on_search"
+            else decision_agent_method_name(
+                args.agent_top_k,
+                args.solve_engine,
+                getattr(args, "retrieval_mode", None),
+            )
         ),
         workers=args.workers,
+        exposure_mode=args.exposure_mode,
     )
     print(json.dumps(result, indent=2))
     args.inference_output = str(output)
@@ -780,7 +795,7 @@ def build_agent_llm(args: argparse.Namespace):
         raise ValueError("Config file must include an [llm] section for openai-compatible SRA agent mode")
     return OpenAICompatibleLLMClient(
         base_url=args.api_base or config.llm.base_url,
-        api_key=config.llm.api_key,
+        api_key=(os.environ.get(args.api_key_env) if args.api_key_env else config.llm.api_key),
         model=args.model or config.llm.model,
         temperature=args.temperature,
         max_tokens=args.max_tokens,
@@ -809,7 +824,11 @@ def build_sra_solve_runtime(args: argparse.Namespace):
 
     config = load_app_config(args.config)
     api_base = args.api_base or (config.llm.base_url if config.llm else None)
-    api_key = config.llm.api_key if config.llm else None
+    api_key = (
+        os.environ.get(args.api_key_env)
+        if getattr(args, "api_key_env", None)
+        else (config.llm.api_key if config.llm else None)
+    )
     engine_kwargs = {
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
